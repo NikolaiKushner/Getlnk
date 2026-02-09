@@ -1,17 +1,33 @@
+import type { SubscriptionPlan } from "../lib/database.types.ts";
+
 interface DashboardNavProps {
-  activeTab: "links" | "analytics" | "settings";
+  activeTab: "links" | "analytics" | "settings" | "billing";
   userName: string;
   isAdmin: boolean;
+  plan?: SubscriptionPlan;
 }
 
 const tabs = [
   { id: "links", label: "Links", href: "/dashboard" },
   { id: "analytics", label: "Analytics", href: "/analytics" },
   { id: "settings", label: "Settings", href: "/settings" },
+  { id: "billing", label: "Billing", href: "/dashboard/billing" },
 ] as const;
 
+const PLAN_BADGE_STYLES: Record<SubscriptionPlan, string> = {
+  free: "bg-gray-100 text-gray-600",
+  pro: "bg-indigo-100 text-indigo-700",
+  business: "bg-amber-100 text-amber-700",
+};
+
+const PLAN_LABELS: Record<SubscriptionPlan, string> = {
+  free: "Free",
+  pro: "Pro",
+  business: "Business",
+};
+
 export default function DashboardNav(
-  { activeTab, userName, isAdmin }: DashboardNavProps,
+  { activeTab, userName, isAdmin, plan = "free" }: DashboardNavProps,
 ) {
   return (
     <header class="bg-white shadow">
@@ -42,8 +58,27 @@ export default function DashboardNav(
             </nav>
           </div>
 
-          {/* Right: User info + Logout */}
-          <div class="flex items-center gap-2 sm:gap-4">
+          {/* Right: Plan badge + User info + Logout */}
+          <div class="flex items-center gap-2 sm:gap-3">
+            {/* Plan badge */}
+            <span
+              class={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
+                PLAN_BADGE_STYLES[plan]
+              }`}
+            >
+              {PLAN_LABELS[plan]}
+            </span>
+
+            {/* Upgrade button (only for free users) */}
+            {plan === "free" && (
+              <a
+                href="/pricing"
+                class="hidden sm:inline-flex items-center px-3 py-1 text-xs font-semibold text-white bg-indigo-600 rounded-full hover:bg-indigo-700 transition-colors touch-manipulation"
+              >
+                Upgrade
+              </a>
+            )}
+
             <span class="text-xs sm:text-sm text-gray-600 truncate max-w-[100px] sm:max-w-[200px] hidden sm:inline">
               {userName}
             </span>

@@ -1,7 +1,8 @@
 import { define } from "../../../utils.ts";
-import { getSession } from "../../../lib/auth.ts";
+import { getSession, getUserProfile } from "../../../lib/auth.ts";
 import { createSupabaseClient } from "../../../lib/supabase.ts";
 import type { Link, LinkInsert } from "../../../lib/database.types.ts";
+import { canAddLink } from "../../../lib/plans.ts";
 
 // GET /api/links - Get all links for the current user
 export const handler = define.handlers({
@@ -99,6 +100,33 @@ export const handler = define.handlers({
       }
 
       const supabase = createSupabaseClient(session.accessToken);
+
+      // Check plan limits before allowing link creation
+      const profile = await getUserProfile(session.user.id, session.accessToken);
+      const userPlan = profile?.plan || "free";
+
+      // Count existing links
+      const { count: linkCount } = await supabase
+        .from("links")
+        .select("*", { count: "exact", head: true })
+        .eq("user_id", session.user.id);
+
+      const linkCheck = canAddLink(userPlan, linkCount || 0);
+      if (!linkCheck.allowed) {
+        return new Response(
+          JSON.stringify({
+            error: `You've reached the ${linkCheck.limit}-link limit on the Free plan. Upgrade to Pro for unlimited links.`,
+            code: "PLAN_LIMIT_REACHED",
+            limit: linkCheck.limit,
+            current: linkCount,
+            requiredPlan: "pro",
+          }),
+          {
+            status: 403,
+            headers: { "Content-Type": "application/json" },
+          },
+        );
+      }
 
       // Get the highest position to add new link at the end
       const { data: existingLinks } = await supabase

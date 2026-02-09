@@ -1,5 +1,6 @@
 import { useComputed, useSignal } from "@preact/signals";
 import { useEffect } from "preact/hooks";
+import type { SubscriptionPlan } from "../lib/database.types.ts";
 
 interface DailyStats {
   date: string;
@@ -19,13 +20,66 @@ interface AnalyticsData {
   totalClicks: number;
   topLinks: TopLink[];
   dailyStats: DailyStats[];
+  plan?: {
+    current: string;
+    analyticsRetentionDays: number;
+    hasReferrers: boolean;
+    hasCountries: boolean;
+    hasExport: boolean;
+  };
 }
 
-export default function AnalyticsIsland() {
+interface AnalyticsIslandProps {
+  plan?: SubscriptionPlan;
+  analyticsRetentionDays?: number; // -1 = unlimited
+}
+
+function UpgradeCard(
+  { feature, description, requiredPlan = "pro" }: {
+    feature: string;
+    description: string;
+    requiredPlan?: string;
+  },
+) {
+  return (
+    <div class="bg-gradient-to-br from-gray-50 to-indigo-50 border border-indigo-200 rounded-lg p-6 text-center">
+      <div class="w-10 h-10 mx-auto mb-3 rounded-full bg-indigo-100 flex items-center justify-center">
+        <svg
+          class="w-5 h-5 text-indigo-600"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
+          />
+        </svg>
+      </div>
+      <h3 class="text-sm font-semibold text-gray-900 mb-1">{feature}</h3>
+      <p class="text-xs text-gray-600 mb-3">{description}</p>
+      <a
+        href="/pricing"
+        class="inline-flex items-center px-3 py-1.5 text-xs font-semibold text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 transition-colors touch-manipulation"
+      >
+        Upgrade to {requiredPlan === "business" ? "Business" : "Pro"}
+      </a>
+    </div>
+  );
+}
+
+export default function AnalyticsIsland(
+  { plan = "free", analyticsRetentionDays = 7 }: AnalyticsIslandProps,
+) {
   const loading = useSignal(true);
   const error = useSignal<string | null>(null);
   const data = useSignal<AnalyticsData | null>(null);
   const selectedPeriod = useSignal<"7" | "30" | "all">("30");
+
+  const isFreePlan = plan === "free";
+  const _isBusinessPlan = plan === "business";
 
   const avgViewsPerDay = useComputed(() => {
     if (!data.value || !data.value.dailyStats.length) return 0;
@@ -68,12 +122,27 @@ export default function AnalyticsIsland() {
   }
 
   useEffect(() => {
-    fetchAnalytics(selectedPeriod.value);
+    // For free plan, default to 7 days since that's the max retention
+    if (isFreePlan) {
+      selectedPeriod.value = "7";
+      fetchAnalytics("7");
+    } else {
+      fetchAnalytics(selectedPeriod.value);
+    }
   }, []);
 
   function handlePeriodChange(period: "7" | "30" | "all") {
     selectedPeriod.value = period;
     fetchAnalytics(period);
+  }
+
+  // Check if a period exceeds plan retention
+  function isPeriodLocked(period: "7" | "30" | "all"): boolean {
+    if (analyticsRetentionDays === -1) return false;
+    if (period === "7") return false;
+    if (period === "30") return analyticsRetentionDays < 30;
+    if (period === "all") return analyticsRetentionDays < 365;
+    return false;
   }
 
   // Find min and max for scaling charts
@@ -86,43 +155,61 @@ export default function AnalyticsIsland() {
 
   return (
     <div class="space-y-6">
+      {/* Plan retention notice for free users */}
+      {isFreePlan && (
+        <div class="bg-indigo-50 border border-indigo-200 rounded-lg p-4 flex items-center justify-between">
+          <div>
+            <p class="text-sm text-indigo-800 font-medium">
+              Free plan: 7-day analytics history
+            </p>
+            <p class="text-xs text-indigo-600 mt-0.5">
+              Upgrade to Pro for 90 days, or Business for unlimited history.
+            </p>
+          </div>
+          <a
+            href="/pricing"
+            class="shrink-0 ml-4 px-3 py-1.5 text-xs font-semibold text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 transition-colors touch-manipulation"
+          >
+            Upgrade
+          </a>
+        </div>
+      )}
+
       {/* Period Selector */}
       <div class="bg-white rounded-lg shadow p-4 sm:p-6">
         <h2 class="text-lg font-semibold text-gray-900 mb-4">Date Range</h2>
         <div class="flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={() => handlePeriodChange("7")}
-            class={`px-4 py-2 rounded-lg font-medium transition-colors touch-manipulation ${
-              selectedPeriod.value === "7"
-                ? "bg-indigo-600 text-white"
-                : "bg-gray-200 text-gray-700 hover:bg-gray-300"
-            }`}
-          >
-            Last 7 days
-          </button>
-          <button
-            type="button"
-            onClick={() => handlePeriodChange("30")}
-            class={`px-4 py-2 rounded-lg font-medium transition-colors touch-manipulation ${
-              selectedPeriod.value === "30"
-                ? "bg-indigo-600 text-white"
-                : "bg-gray-200 text-gray-700 hover:bg-gray-300"
-            }`}
-          >
-            Last 30 days
-          </button>
-          <button
-            type="button"
-            onClick={() => handlePeriodChange("all")}
-            class={`px-4 py-2 rounded-lg font-medium transition-colors touch-manipulation ${
-              selectedPeriod.value === "all"
-                ? "bg-indigo-600 text-white"
-                : "bg-gray-200 text-gray-700 hover:bg-gray-300"
-            }`}
-          >
-            All time
-          </button>
+          {(
+            [
+              { period: "7" as const, label: "Last 7 days" },
+              { period: "30" as const, label: "Last 30 days" },
+              { period: "all" as const, label: "All time" },
+            ] as const
+          ).map(({ period, label }) => {
+            const locked = isPeriodLocked(period);
+            return (
+              <button
+                key={period}
+                type="button"
+                onClick={() => !locked && handlePeriodChange(period)}
+                disabled={locked}
+                class={`px-4 py-2 rounded-lg font-medium transition-colors touch-manipulation ${
+                  locked
+                    ? "bg-gray-100 text-gray-400 cursor-not-allowed"
+                    : selectedPeriod.value === period
+                    ? "bg-indigo-600 text-white"
+                    : "bg-gray-200 text-gray-700 hover:bg-gray-300"
+                }`}
+              >
+                {label}
+                {locked && (
+                  <span class="ml-1.5 text-xs bg-indigo-100 text-indigo-600 px-1.5 py-0.5 rounded-full font-semibold">
+                    PRO
+                  </span>
+                )}
+              </button>
+            );
+          })}
         </div>
       </div>
 
@@ -244,6 +331,38 @@ export default function AnalyticsIsland() {
                   ))}
                 </div>
               </div>
+            </div>
+          )}
+
+          {/* Locked Feature Cards for Free Plan */}
+          {isFreePlan && (
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <UpgradeCard
+                feature="Referrer Tracking"
+                description="See where your visitors are coming from (Google, Instagram, Twitter, etc.)"
+                requiredPlan="pro"
+              />
+              <UpgradeCard
+                feature="Country Analytics"
+                description="Understand your audience's geographic distribution"
+                requiredPlan="pro"
+              />
+              <UpgradeCard
+                feature="CSV Export"
+                description="Download your analytics data for custom reporting"
+                requiredPlan="business"
+              />
+            </div>
+          )}
+
+          {/* Pro plan: show export as locked */}
+          {plan === "pro" && (
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <UpgradeCard
+                feature="CSV Export"
+                description="Download your analytics data for custom reporting"
+                requiredPlan="business"
+              />
             </div>
           )}
 

@@ -116,7 +116,7 @@ function PricingCard(
         ))}
       </ul>
       <a
-        href="/register"
+        href="/pricing"
         class={`mt-8 block text-center py-3 px-6 rounded-xl font-semibold transition-colors touch-manipulation ${
           highlight
             ? "bg-white text-indigo-600 hover:bg-indigo-50"

@@ -1,11 +1,17 @@
 import { define } from "../../../utils.ts";
-import { getSession } from "../../../lib/auth.ts";
+import { getSession, getUserProfile } from "../../../lib/auth.ts";
 import { createSupabaseClient } from "../../../lib/supabase.ts";
 import type {
   ProfileTheme,
   PublicProfileInsert,
   PublicProfileUpdate,
 } from "../../../lib/database.types.ts";
+import {
+  canAddSocialLink,
+  getMaxBioLength,
+  getPlanLimits,
+  isThemeAllowed,
+} from "../../../lib/plans.ts";
 
 // GET /api/public-profile - Get current user's public profile
 // POST /api/public-profile - Create or update public profile
@@ -118,10 +124,24 @@ export const handler = define.handlers({
         }
       }
 
-      // Validate bio length if provided
-      if (bio !== undefined && bio && bio.length > 500) {
+      // Get user's plan for limit enforcement
+      const userProfileData = await getUserProfile(
+        session.user.id,
+        session.accessToken,
+      );
+      const userPlan = userProfileData?.plan || "free";
+      const planLimits = getPlanLimits(userPlan);
+
+      // Validate bio length against plan limits
+      const maxBio = getMaxBioLength(userPlan);
+      if (bio !== undefined && bio && bio.length > maxBio) {
         return new Response(
-          JSON.stringify({ error: "Bio must be 500 characters or less" }),
+          JSON.stringify({
+            error: `Bio must be ${maxBio} characters or less on your current plan`,
+            code: "PLAN_LIMIT_REACHED",
+            limit: maxBio,
+            requiredPlan: userPlan === "free" ? "pro" : "business",
+          }),
           {
             status: 400,
             headers: { "Content-Type": "application/json" },
@@ -129,7 +149,7 @@ export const handler = define.handlers({
         );
       }
 
-      // Validate theme if provided
+      // Validate theme against plan allowlist
       const validThemes: ProfileTheme[] = [
         "default",
         "dark",
@@ -145,6 +165,42 @@ export const handler = define.handlers({
             headers: { "Content-Type": "application/json" },
           },
         );
+      }
+
+      if (theme !== undefined && !isThemeAllowed(userPlan, theme)) {
+        return new Response(
+          JSON.stringify({
+            error: `The "${theme}" theme requires a Pro plan or higher`,
+            code: "PLAN_LIMIT_REACHED",
+            requiredPlan: "pro",
+          }),
+          {
+            status: 403,
+            headers: { "Content-Type": "application/json" },
+          },
+        );
+      }
+
+      // Validate social links count against plan limits
+      if (social_links !== undefined && social_links) {
+        const filledSocialLinks = Object.values(social_links).filter(
+          (v) => !!v,
+        ).length;
+        if (!canAddSocialLink(userPlan, filledSocialLinks)) {
+          return new Response(
+            JSON.stringify({
+              error: `Free plan allows up to ${planLimits.maxSocialLinks} social links. Upgrade to Pro for unlimited.`,
+              code: "PLAN_LIMIT_REACHED",
+              limit: planLimits.maxSocialLinks,
+              current: filledSocialLinks,
+              requiredPlan: "pro",
+            }),
+            {
+              status: 403,
+              headers: { "Content-Type": "application/json" },
+            },
+          );
+        }
       }
 
       const supabase = createSupabaseClient(session.accessToken);

@@ -1,7 +1,8 @@
 import { define } from "../../../utils.ts";
-import { getSession } from "../../../lib/auth.ts";
+import { getSession, getUserProfile } from "../../../lib/auth.ts";
 import { createSupabaseClient } from "../../../lib/supabase.ts";
 import type { Database } from "../../../lib/database.types.ts";
+import { getPlanLimits } from "../../../lib/plans.ts";
 
 interface DailyStats {
   date: string;
@@ -21,6 +22,13 @@ interface AnalyticsResponse {
   totalClicks: number;
   topLinks: TopLink[];
   dailyStats: DailyStats[];
+  plan: {
+    current: string;
+    analyticsRetentionDays: number;
+    hasReferrers: boolean;
+    hasCountries: boolean;
+    hasExport: boolean;
+  };
 }
 
 type PublicProfile = Database["public"]["Tables"]["public_profiles"]["Row"];
@@ -41,11 +49,26 @@ export const handler = define.handlers({
       const url = new URL(ctx.req.url);
       const days = url.searchParams.get("days");
 
+      // Get user's plan to enforce analytics retention limits
+      const userProfileData = await getUserProfile(
+        session.user.id,
+        session.accessToken,
+      );
+      const userPlan = userProfileData?.plan || "free";
+      const planLimits = getPlanLimits(userPlan);
       // Parse days parameter
       let daysBack = 30; // default
       if (days === "7") daysBack = 7;
       else if (days === "30") daysBack = 30;
       else if (days === "all") daysBack = 365 * 10; // 10 years
+
+      // Enforce plan retention limit: clamp daysBack to plan max
+      if (
+        planLimits.analyticsRetentionDays !== -1 &&
+        daysBack > planLimits.analyticsRetentionDays
+      ) {
+        daysBack = planLimits.analyticsRetentionDays;
+      }
 
       const supabase = createSupabaseClient(session.accessToken);
 
@@ -144,6 +167,13 @@ export const handler = define.handlers({
         totalClicks,
         topLinks,
         dailyStats,
+        plan: {
+          current: userPlan,
+          analyticsRetentionDays: planLimits.analyticsRetentionDays,
+          hasReferrers: planLimits.analyticsReferrers,
+          hasCountries: planLimits.analyticsCountries,
+          hasExport: planLimits.analyticsExport,
+        },
       };
 
       return new Response(JSON.stringify({ data: response }), {

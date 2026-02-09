@@ -6,13 +6,33 @@ import type {
   Link,
   ProfileTheme,
   PublicProfile,
+  SubscriptionPlan,
 } from "../lib/database.types.ts";
+
+interface PlanLimitsProps {
+  maxLinks: number; // -1 = unlimited
+  maxSocialLinks: number; // -1 = unlimited
+  maxBioLength: number;
+  allowedThemes: ProfileTheme[];
+  removeBranding: boolean;
+}
 
 interface LinksEditorProps {
   initialProfile: PublicProfile | null;
   initialLinks: Link[];
   showQuickView?: boolean;
+  plan?: SubscriptionPlan;
+  planLimits?: PlanLimitsProps;
 }
+
+// Default limits for backward compatibility (free plan)
+const DEFAULT_PLAN_LIMITS: PlanLimitsProps = {
+  maxLinks: 5,
+  maxSocialLinks: 3,
+  maxBioLength: 160,
+  allowedThemes: ["default", "dark", "minimal"],
+  removeBranding: false,
+};
 
 interface QuickViewLink {
   id: string;
@@ -170,8 +190,12 @@ const PREVIEW_THEME_STYLES: Record<
 };
 
 export default function LinksEditor(
-  { initialProfile, initialLinks, showQuickView }: LinksEditorProps,
+  { initialProfile, initialLinks, showQuickView, plan = "free", planLimits }: LinksEditorProps,
 ) {
+  const limits = planLimits || DEFAULT_PLAN_LIMITS;
+  const _isFreePlan = plan === "free";
+  const _linkLimitReached = limits.maxLinks !== -1 && initialLinks.length >= limits.maxLinks;
+
   // Profile state
   const username = useSignal(initialProfile?.username || "");
   const displayName = useSignal(initialProfile?.display_name || "");
@@ -685,8 +709,13 @@ export default function LinksEditor(
               rows={3}
               fullWidth
             />
-            <p class="text-xs text-gray-500 mt-1">
-              {bio.value.length}/500 characters
+            <p class={`text-xs mt-1 ${bio.value.length > limits.maxBioLength ? "text-red-500" : "text-gray-500"}`}>
+              {bio.value.length}/{limits.maxBioLength} characters
+              {limits.maxBioLength < 500 && (
+                <span class="ml-1 text-indigo-500">
+                  (Upgrade for {500} chars)
+                </span>
+              )}
             </p>
           </div>
 
@@ -694,30 +723,52 @@ export default function LinksEditor(
           <div>
             <label class="block text-sm font-medium text-gray-700 mb-3">
               Social Links
+              {limits.maxSocialLinks !== -1 && (
+                <span class="ml-2 text-xs font-normal text-gray-400">
+                  ({Object.values(socialLinks.value).filter((v) => !!v).length}/{limits.maxSocialLinks})
+                </span>
+              )}
             </label>
             <div class="space-y-3">
-              {SOCIAL_PLATFORMS.map((platform) => (
-                <div key={platform.key} class="flex items-center gap-3">
-                  <div class="w-8 flex items-center justify-center text-gray-600">
-                    {platform.icon}
+              {SOCIAL_PLATFORMS.map((platform, _idx) => {
+                const filledCount = Object.values(socialLinks.value).filter((v) => !!v).length;
+                const currentValue = socialLinks.value[platform.key] || "";
+                const isLocked = limits.maxSocialLinks !== -1 &&
+                  !currentValue &&
+                  filledCount >= limits.maxSocialLinks;
+
+                return (
+                  <div key={platform.key} class={`flex items-center gap-3 ${isLocked ? "opacity-50" : ""}`}>
+                    <div class="w-8 flex items-center justify-center text-gray-600">
+                      {platform.icon}
+                    </div>
+                    <div class="flex-1 relative">
+                      {isLocked ? (
+                        <div class="flex items-center gap-2 px-3 py-2 bg-gray-100 border border-gray-200 rounded-lg text-sm text-gray-400">
+                          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                          </svg>
+                          <span>Upgrade to Pro</span>
+                        </div>
+                      ) : (
+                        <Input
+                          type="text"
+                          value={currentValue}
+                          onInput={(e) => {
+                            const newValue = (e.target as HTMLInputElement).value;
+                            socialLinks.value = {
+                              ...socialLinks.value,
+                              [platform.key]: newValue,
+                            };
+                          }}
+                          placeholder={`${platform.label} ${platform.placeholder}`}
+                          fullWidth
+                        />
+                      )}
+                    </div>
                   </div>
-                  <div class="flex-1">
-                    <Input
-                      type="text"
-                      value={socialLinks.value[platform.key] || ""}
-                      onInput={(e) => {
-                        const newValue = (e.target as HTMLInputElement).value;
-                        socialLinks.value = {
-                          ...socialLinks.value,
-                          [platform.key]: newValue,
-                        };
-                      }}
-                      placeholder={`${platform.label} ${platform.placeholder}`}
-                      fullWidth
-                    />
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
             <p class="text-xs text-gray-500 mt-2">
               Enter your username or profile URL for each platform
@@ -730,21 +781,38 @@ export default function LinksEditor(
               Theme
             </label>
             <div class="grid grid-cols-3 sm:grid-cols-5 gap-2">
-              {THEMES.map((t) => (
-                <button
-                  key={t.value}
-                  type="button"
-                  onClick={() => theme.value = t.value}
-                  class={` p-2 rounded-lg border-2 transition-all touch-manipulation ${
-                    theme.value === t.value
-                      ? "border-indigo-500 ring-2 ring-indigo-200"
-                      : "border-gray-200 hover:border-gray-300 active:border-gray-400"
-                  }`}
-                >
-                  <div class={`w-full h-8 rounded ${t.preview}`} />
-                  <p class="text-xs text-center mt-1">{t.label}</p>
-                </button>
-              ))}
+              {THEMES.map((t) => {
+                const isAllowed = limits.allowedThemes.includes(t.value);
+                return (
+                  <button
+                    key={t.value}
+                    type="button"
+                    onClick={() => {
+                      if (isAllowed) {
+                        theme.value = t.value;
+                      }
+                    }}
+                    disabled={!isAllowed}
+                    class={`relative p-2 rounded-lg border-2 transition-all touch-manipulation ${
+                      !isAllowed
+                        ? "border-gray-200 opacity-50 cursor-not-allowed"
+                        : theme.value === t.value
+                        ? "border-indigo-500 ring-2 ring-indigo-200"
+                        : "border-gray-200 hover:border-gray-300 active:border-gray-400"
+                    }`}
+                  >
+                    <div class={`w-full h-8 rounded ${t.preview}`} />
+                    <p class="text-xs text-center mt-1">{t.label}</p>
+                    {!isAllowed && (
+                      <div class="absolute inset-0 flex items-center justify-center">
+                        <span class="bg-indigo-600 text-white text-[10px] font-semibold px-1.5 py-0.5 rounded-full">
+                          PRO
+                        </span>
+                      </div>
+                    )}
+                  </button>
+                );
+              })}
             </div>
           </div>
 
@@ -790,8 +858,40 @@ export default function LinksEditor(
 
         {/* Add New Link */}
         <div class="bg-gray-50 rounded-lg p-3 sm:p-4 mb-4 sm:mb-6">
-          <h3 class="text-sm font-medium text-gray-700 mb-3">Add New Link</h3>
-          <div class="space-y-3">
+          <div class="flex items-center justify-between mb-3">
+            <h3 class="text-sm font-medium text-gray-700">Add New Link</h3>
+            {limits.maxLinks !== -1 && (
+              <span class={`text-xs font-medium px-2 py-0.5 rounded-full ${
+                links.value.length >= limits.maxLinks
+                  ? "bg-red-100 text-red-700"
+                  : links.value.length >= limits.maxLinks - 1
+                  ? "bg-yellow-100 text-yellow-700"
+                  : "bg-gray-200 text-gray-600"
+              }`}>
+                {links.value.length}/{limits.maxLinks} links
+              </span>
+            )}
+          </div>
+
+          {/* Link limit reached banner */}
+          {limits.maxLinks !== -1 && links.value.length >= limits.maxLinks && (
+            <div class="mb-3 p-3 bg-indigo-50 border border-indigo-200 rounded-lg">
+              <p class="text-sm text-indigo-800 font-medium">
+                You've reached the {limits.maxLinks}-link limit
+              </p>
+              <p class="text-xs text-indigo-600 mt-1">
+                Upgrade to Pro for unlimited links.
+              </p>
+              <a
+                href="/pricing"
+                class="inline-block mt-2 px-3 py-1.5 text-xs font-semibold text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 transition-colors touch-manipulation"
+              >
+                Upgrade to Pro - $3/mo
+              </a>
+            </div>
+          )}
+
+          <div class={`space-y-3 ${limits.maxLinks !== -1 && links.value.length >= limits.maxLinks ? "opacity-50 pointer-events-none" : ""}`}>
             <Input
               type="text"
               value={newLinkTitle.value}
@@ -812,6 +912,7 @@ export default function LinksEditor(
               onClick={addLink}
               variant="secondary"
               loading={loading.value}
+              disabled={limits.maxLinks !== -1 && links.value.length >= limits.maxLinks}
             >
               Add Link
             </Button>

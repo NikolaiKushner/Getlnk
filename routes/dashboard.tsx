@@ -4,6 +4,7 @@ import { getAuthUser, isSuperAdmin } from "../lib/auth.ts";
 import type { AuthUser } from "../lib/auth.ts";
 import { createSupabaseClient } from "../lib/supabase.ts";
 import type { Link, PublicProfile } from "../lib/database.types.ts";
+import { getPlanLimits } from "../lib/plans.ts";
 import OnboardingWizard from "../islands/OnboardingWizard.tsx";
 import LinksEditor from "../islands/LinksEditor.tsx";
 import DashboardNav from "../components/DashboardNav.tsx";
@@ -20,6 +21,8 @@ export default define.page(async function Dashboard(ctx) {
 
   const { user, profile, session } = authUser;
   const isAdmin = isSuperAdmin(profile);
+  const userPlan = profile.plan || "free";
+  const planLimits = getPlanLimits(userPlan);
 
   const supabase = createSupabaseClient(session.accessToken);
   const { data: publicProfileData } = await supabase
@@ -49,6 +52,7 @@ export default define.page(async function Dashboard(ctx) {
           activeTab="links"
           userName={profile.full_name || user.email || ""}
           isAdmin={isAdmin}
+          plan={userPlan}
         />
 
         <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
@@ -65,6 +69,14 @@ export default define.page(async function Dashboard(ctx) {
               initialProfile={publicProfile}
               initialLinks={(links as Link[]) || []}
               showQuickView
+              plan={userPlan}
+              planLimits={{
+                maxLinks: planLimits.maxLinks,
+                maxSocialLinks: planLimits.maxSocialLinks,
+                maxBioLength: planLimits.maxBioLength,
+                allowedThemes: planLimits.allowedThemes,
+                removeBranding: planLimits.removeBranding,
+              }}
             />
           )}
         </main>
