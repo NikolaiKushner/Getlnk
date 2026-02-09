@@ -6,12 +6,6 @@ import {
 } from "../../../lib/stripe.ts";
 import type { SubscriptionPlan } from "../../../lib/database.types.ts";
 
-// Helper type for profile query results
-interface ProfileRow {
-  id: string;
-  plan: SubscriptionPlan;
-}
-
 // POST /api/billing/webhook - Handle Stripe webhook events
 // This endpoint is called by Stripe and must NOT require auth
 export const handler = define.handlers({
@@ -65,9 +59,9 @@ export const handler = define.handlers({
             .from("user_profiles")
             .select("plan")
             .eq("id", userId)
-            .single() as { data: { plan: SubscriptionPlan } | null };
+            .single();
 
-          const fromPlan = currentProfile?.plan || "free";
+          const fromPlan = (currentProfile?.plan as SubscriptionPlan) || "free";
 
           // Update user profile
           await adminSupabase
@@ -80,7 +74,7 @@ export const handler = define.handlers({
               subscription_period_end: new Date(
                 subscription.current_period_end * 1000,
               ).toISOString(),
-            } as never)
+            })
             .eq("id", userId);
 
           // Log the event
@@ -91,7 +85,7 @@ export const handler = define.handlers({
             to_plan: plan,
             stripe_event_id: event.id,
             metadata: { checkout_session_id: session.id },
-          } as never);
+          });
 
           console.log(`User ${userId} upgraded to ${plan}`);
           break;
@@ -111,7 +105,7 @@ export const handler = define.handlers({
               .from("user_profiles")
               .select("id, plan")
               .eq("stripe_customer_id", customerId)
-              .single() as { data: ProfileRow | null };
+              .single();
 
             if (!profile) {
               console.error("No user found for customer:", customerId);
@@ -120,7 +114,7 @@ export const handler = define.handlers({
 
             const priceId = subscription.items.data[0]?.price.id;
             const newPlan = priceId ? getPlanFromPriceId(priceId) : "pro";
-            const fromPlan = profile.plan;
+            const fromPlan = profile.plan as SubscriptionPlan;
 
             const status = subscription.cancel_at_period_end
               ? "canceled"
@@ -140,7 +134,7 @@ export const handler = define.handlers({
                 subscription_period_end: new Date(
                   subscription.current_period_end * 1000,
                 ).toISOString(),
-              } as never)
+              })
               .eq("id", profile.id);
 
             // Log plan change if different
@@ -158,7 +152,7 @@ export const handler = define.handlers({
                 from_plan: fromPlan,
                 to_plan: newPlan,
                 stripe_event_id: event.id,
-              } as never);
+              });
             }
 
             break;
@@ -186,7 +180,7 @@ export const handler = define.handlers({
               subscription_period_end: new Date(
                 subscription.current_period_end * 1000,
               ).toISOString(),
-            } as never)
+            })
             .eq("id", userId);
 
           console.log(`Subscription updated for ${userId}: ${newPlan} (${status})`);
@@ -204,14 +198,14 @@ export const handler = define.handlers({
             .from("user_profiles")
             .select("id, plan")
             .eq("stripe_customer_id", customerId)
-            .single() as { data: ProfileRow | null };
+            .single();
 
           if (!profile) {
             console.error("No user found for customer:", customerId);
             break;
           }
 
-          const fromPlan = profile.plan;
+          const fromPlan = profile.plan as SubscriptionPlan;
 
           await adminSupabase
             .from("user_profiles")
@@ -220,7 +214,7 @@ export const handler = define.handlers({
               subscription_status: null,
               stripe_subscription_id: null,
               subscription_period_end: null,
-            } as never)
+            })
             .eq("id", profile.id);
 
           await adminSupabase.from("subscription_events").insert({
@@ -229,7 +223,7 @@ export const handler = define.handlers({
             from_plan: fromPlan,
             to_plan: "free",
             stripe_event_id: event.id,
-          } as never);
+          });
 
           console.log(`Subscription canceled for user ${profile.id}`);
           break;
@@ -242,26 +236,26 @@ export const handler = define.handlers({
           const invoice = event.data.object;
           const customerId = invoice.customer as string;
 
-          const { data: pfProfile } = await adminSupabase
+          const { data: profile } = await adminSupabase
             .from("user_profiles")
             .select("id")
             .eq("stripe_customer_id", customerId)
-            .single() as { data: { id: string } | null };
+            .single();
 
-          if (pfProfile) {
+          if (profile) {
             await adminSupabase
               .from("user_profiles")
-              .update({ subscription_status: "past_due" } as never)
-              .eq("id", pfProfile.id);
+              .update({ subscription_status: "past_due" })
+              .eq("id", profile.id);
 
             await adminSupabase.from("subscription_events").insert({
-              user_id: pfProfile.id,
+              user_id: profile.id,
               event_type: "payment_failed",
               stripe_event_id: event.id,
               metadata: { invoice_id: invoice.id },
-            } as never);
+            });
 
-            console.log(`Payment failed for user ${pfProfile.id}`);
+            console.log(`Payment failed for user ${profile.id}`);
           }
           break;
         }
@@ -276,24 +270,24 @@ export const handler = define.handlers({
           // Only process subscription invoices
           if (!invoice.subscription) break;
 
-          const { data: ipProfile } = await adminSupabase
+          const { data: profile } = await adminSupabase
             .from("user_profiles")
             .select("id")
             .eq("stripe_customer_id", customerId)
-            .single() as { data: { id: string } | null };
+            .single();
 
-          if (ipProfile) {
+          if (profile) {
             await adminSupabase
               .from("user_profiles")
-              .update({ subscription_status: "active" } as never)
-              .eq("id", ipProfile.id);
+              .update({ subscription_status: "active" })
+              .eq("id", profile.id);
 
             await adminSupabase.from("subscription_events").insert({
-              user_id: ipProfile.id,
+              user_id: profile.id,
               event_type: "renewed",
               stripe_event_id: event.id,
               metadata: { invoice_id: invoice.id },
-            } as never);
+            });
           }
           break;
         }

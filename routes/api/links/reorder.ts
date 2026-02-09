@@ -36,7 +36,7 @@ export const handler = define.handlers({
       const updates = linkIds.map((id: string, index: number) =>
         supabase
           .from("links")
-          .update({ position: index } as never)
+          .update({ position: index })
           .eq("id", id)
           .eq("user_id", session.user.id)
       );

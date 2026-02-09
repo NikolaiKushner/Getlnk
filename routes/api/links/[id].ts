@@ -48,7 +48,7 @@ export const handler = define.handlers({
 
       const { data: link, error } = await supabase
         .from("links")
-        .update(updateData as never)
+        .update(updateData)
         .eq("id", linkId)
         .eq("user_id", session.user.id)
         .select()

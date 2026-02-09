@@ -151,7 +151,7 @@ export const handler = define.handlers({
 
       const { data: link, error } = await supabase
         .from("links")
-        .insert(insertData as never)
+        .insert(insertData)
         .select()
         .single();
 

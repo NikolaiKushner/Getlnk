@@ -225,7 +225,7 @@ export const handler = define.handlers({
 
         const { data: profile, error } = await supabase
           .from("public_profiles")
-          .update(updateData as never)
+          .update(updateData)
           .eq("user_id", session.user.id)
           .select()
           .single();
@@ -285,7 +285,7 @@ export const handler = define.handlers({
 
         const { data: profile, error } = await supabase
           .from("public_profiles")
-          .insert(insertData as never)
+          .insert(insertData)
           .select()
           .single();
 

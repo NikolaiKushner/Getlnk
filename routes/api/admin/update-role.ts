@@ -57,7 +57,7 @@ export const handler = define.handlers({
 
       const { error } = await supabase
         .from("user_profiles")
-        .update({ role } as never)
+        .update({ role })
         .eq("id", userId);
 
       if (error) {

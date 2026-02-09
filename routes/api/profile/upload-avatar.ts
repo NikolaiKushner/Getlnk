@@ -94,7 +94,7 @@ export const handler = define.handlers({
       // Update user's public profile with new avatar URL
       const { error: updateError } = await userSupabase
         .from("public_profiles")
-        .update({ avatar_url: avatarUrl } as never)
+        .update({ avatar_url: avatarUrl })
         .eq("user_id", user.id);
 
       if (updateError) {

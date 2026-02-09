@@ -76,6 +76,7 @@ export interface Database {
           created_at?: string;
           updated_at?: string;
         };
+        Relationships: [];
       };
       public_profiles: {
         Row: {
@@ -120,6 +121,7 @@ export interface Database {
           created_at?: string;
           updated_at?: string;
         };
+        Relationships: [];
       };
       links: {
         Row: {
@@ -158,6 +160,7 @@ export interface Database {
           created_at?: string;
           updated_at?: string;
         };
+        Relationships: [];
       };
       page_analytics: {
         Row: {
@@ -190,6 +193,7 @@ export interface Database {
           country?: string | null;
           created_at?: string;
         };
+        Relationships: [];
       };
       subscription_plans: {
         Row: {
@@ -228,6 +232,7 @@ export interface Database {
           created_at?: string;
           updated_at?: string;
         };
+        Relationships: [];
       };
       subscription_events: {
         Row: {
@@ -260,6 +265,7 @@ export interface Database {
           metadata?: Json;
           created_at?: string;
         };
+        Relationships: [];
       };
     };
     Views: {

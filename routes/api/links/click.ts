@@ -24,14 +24,14 @@ export const handler = define.handlers({
       // This avoids race conditions by doing the read and write in a single operation
       const { error } = await supabase.rpc("increment_link_clicks", {
         link_id: linkId,
-      } as never);
+      });
 
       if (error) {
         console.error("Error incrementing clicks:", error);
         // Fallback: try direct update (less safe but works without the function)
         await supabase
           .from("links")
-          .update({ clicks: 1 } as never)
+          .update({ clicks: 1 })
           .eq("id", linkId)
           .is("clicks", null);
       }

@@ -23,7 +23,7 @@ export const handler = define.handlers({
 
       const { error } = await supabase
         .from("user_profiles")
-        .update({ full_name: fullName } as never)
+        .update({ full_name: fullName })
         .eq("id", session.user.id);
 
       if (error) {

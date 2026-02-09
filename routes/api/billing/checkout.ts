@@ -1,6 +1,6 @@
 import { define } from "../../../utils.ts";
 import { getSession, getUserProfile } from "../../../lib/auth.ts";
-import { createAdminSupabaseClient } from "../../../lib/supabase.ts";
+import { createSupabaseClient } from "../../../lib/supabase.ts";
 import {
   createCheckoutSession,
   getOrCreateStripeCustomer,
@@ -78,10 +78,10 @@ export const handler = define.handlers({
 
       // Save customer ID if it's new
       if (!profile.stripe_customer_id || profile.stripe_customer_id !== customerId) {
-        const adminSupabase = createAdminSupabaseClient();
-        await adminSupabase
+        const supabase = createSupabaseClient(session.accessToken);
+        await supabase
           .from("user_profiles")
-          .update({ stripe_customer_id: customerId } as never)
+          .update({ stripe_customer_id: customerId })
           .eq("id", session.user.id);
       }
 

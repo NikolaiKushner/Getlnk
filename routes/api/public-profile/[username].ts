@@ -56,7 +56,7 @@ export const handler = define.handlers({
       // Increment page views (fire and forget)
       supabase
         .from("public_profiles")
-        .update({ page_views: typedProfile.page_views + 1 } as never)
+        .update({ page_views: typedProfile.page_views + 1 })
         .eq("id", typedProfile.id)
         .then(() => {});
 

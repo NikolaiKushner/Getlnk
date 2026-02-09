@@ -21,7 +21,7 @@ export const handler = define.handlers({
 
       const { error } = await supabase
         .from("user_profiles")
-        .update({ onboarding_completed: true } as never)
+        .update({ onboarding_completed: true })
         .eq("id", session.user.id);
 
       if (error) {
