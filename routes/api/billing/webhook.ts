@@ -3,6 +3,7 @@ import { createAdminSupabaseClient } from "../../../lib/supabase.ts";
 import {
   constructWebhookEvent,
   getPlanFromPriceId,
+  getStripe,
 } from "../../../lib/stripe.ts";
 import type { SubscriptionPlan } from "../../../lib/database.types.ts";
 
@@ -49,7 +50,7 @@ export const handler = define.handlers({
           }
 
           // Fetch the subscription to get plan details
-          const stripe = (await import("../../../lib/stripe.ts")).getStripe();
+          const stripe = getStripe();
           const subscription = await stripe.subscriptions.retrieve(subscriptionId);
           const priceId = subscription.items.data[0]?.price.id;
           const plan = priceId ? getPlanFromPriceId(priceId) : "pro";
