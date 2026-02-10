@@ -7,16 +7,36 @@ import {
 } from "../../../lib/stripe.ts";
 import type { SubscriptionPlan } from "../../../lib/database.types.ts";
 
-// POST /api/billing/webhook - Handle Stripe webhook events
-// This endpoint is called by Stripe and must NOT require auth
+/** Map Stripe subscription status to our internal status. */
+function resolveSubscriptionStatus(
+  stripeStatus: string,
+  cancelAtPeriodEnd: boolean,
+): "active" | "canceled" | "past_due" | "trialing" {
+  if (cancelAtPeriodEnd) return "canceled";
+  if (stripeStatus === "past_due") return "past_due";
+  if (stripeStatus === "trialing") return "trialing";
+  return "active";
+}
+
+/** Look up a user profile by stripe_customer_id. */
+async function findProfileByCustomer(
+  adminSupabase: ReturnType<typeof createAdminSupabaseClient>,
+  customerId: string,
+) {
+  const { data } = await adminSupabase
+    .from("user_profiles")
+    .select("id, plan")
+    .eq("stripe_customer_id", customerId)
+    .single();
+  return data;
+}
+
+// POST /api/billing/webhook — Stripe webhook handler (no auth required)
 export const handler = define.handlers({
   async POST(ctx) {
     const signature = ctx.req.headers.get("stripe-signature");
     if (!signature) {
-      return new Response(
-        JSON.stringify({ error: "Missing stripe-signature header" }),
-        { status: 400, headers: { "Content-Type": "application/json" } },
-      );
+      return Response.json({ error: "Missing stripe-signature header" }, { status: 400 });
     }
 
     let event;
@@ -25,19 +45,13 @@ export const handler = define.handlers({
       event = await constructWebhookEvent(body, signature);
     } catch (err) {
       console.error("Webhook signature verification failed:", err);
-      return new Response(
-        JSON.stringify({ error: "Invalid signature" }),
-        { status: 400, headers: { "Content-Type": "application/json" } },
-      );
+      return Response.json({ error: "Invalid signature" }, { status: 400 });
     }
 
-    const adminSupabase = createAdminSupabaseClient();
+    const db = createAdminSupabaseClient();
 
     try {
       switch (event.type) {
-        // ============================================
-        // Checkout completed - activate subscription
-        // ============================================
         case "checkout.session.completed": {
           const session = event.data.object;
           const userId = session.metadata?.supabase_user_id;
@@ -45,41 +59,39 @@ export const handler = define.handlers({
           const subscriptionId = session.subscription as string;
 
           if (!userId) {
-            console.error("No supabase_user_id in checkout metadata");
+            console.error("Webhook: no supabase_user_id in checkout metadata");
             break;
           }
 
-          // Fetch the subscription to get plan details
-          const stripe = getStripe();
-          const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+          const subscription = await getStripe().subscriptions.retrieve(subscriptionId);
           const priceId = subscription.items.data[0]?.price.id;
           const plan = priceId ? getPlanFromPriceId(priceId) : "pro";
 
-          // Get current plan for audit log
-          const { data: currentProfile } = await adminSupabase
+          const { data: current } = await db
             .from("user_profiles")
             .select("plan")
             .eq("id", userId)
             .single();
 
-          const fromPlan = (currentProfile?.plan as SubscriptionPlan) || "free";
+          const fromPlan = (current?.plan as SubscriptionPlan) || "free";
 
-          // Update user profile
-          await adminSupabase
+          const { error } = await db
             .from("user_profiles")
             .update({
               plan,
               stripe_customer_id: customerId,
               stripe_subscription_id: subscriptionId,
               subscription_status: "active",
-              subscription_period_end: new Date(
-                subscription.current_period_end * 1000,
-              ).toISOString(),
+              subscription_period_end: new Date(subscription.current_period_end * 1000).toISOString(),
             })
             .eq("id", userId);
 
-          // Log the event
-          await adminSupabase.from("subscription_events").insert({
+          if (error) {
+            console.error(`Webhook: failed to update user ${userId}:`, error);
+            break;
+          }
+
+          await db.from("subscription_events").insert({
             user_id: userId,
             event_type: "upgraded",
             from_plan: fromPlan,
@@ -87,128 +99,63 @@ export const handler = define.handlers({
             stripe_event_id: event.id,
             metadata: { checkout_session_id: session.id },
           });
-
-          console.log(`User ${userId} upgraded to ${plan}`);
           break;
         }
 
-        // ============================================
-        // Subscription updated (plan change, renewal)
-        // ============================================
         case "customer.subscription.updated": {
           const subscription = event.data.object;
+          const priceId = subscription.items.data[0]?.price.id;
+          const newPlan = priceId ? getPlanFromPriceId(priceId) : "pro";
+          const status = resolveSubscriptionStatus(subscription.status, subscription.cancel_at_period_end);
+          const periodEnd = new Date(subscription.current_period_end * 1000).toISOString();
+
+          // Find user by metadata or customer ID fallback
           const userId = subscription.metadata?.supabase_user_id;
+          const profile = userId
+            ? { id: userId, plan: "free" as SubscriptionPlan }
+            : await findProfileByCustomer(db, subscription.customer as string);
 
-          if (!userId) {
-            // Try to find user by customer ID
-            const customerId = subscription.customer as string;
-            const { data: profile } = await adminSupabase
-              .from("user_profiles")
-              .select("id, plan")
-              .eq("stripe_customer_id", customerId)
-              .single();
-
-            if (!profile) {
-              console.error("No user found for customer:", customerId);
-              break;
-            }
-
-            const priceId = subscription.items.data[0]?.price.id;
-            const newPlan = priceId ? getPlanFromPriceId(priceId) : "pro";
-            const fromPlan = profile.plan as SubscriptionPlan;
-
-            const status = subscription.cancel_at_period_end
-              ? "canceled"
-              : subscription.status === "active"
-              ? "active"
-              : subscription.status === "past_due"
-              ? "past_due"
-              : subscription.status === "trialing"
-              ? "trialing"
-              : "active";
-
-            await adminSupabase
-              .from("user_profiles")
-              .update({
-                plan: newPlan,
-                subscription_status: status,
-                subscription_period_end: new Date(
-                  subscription.current_period_end * 1000,
-                ).toISOString(),
-              })
-              .eq("id", profile.id);
-
-            // Log plan change if different
-            if (fromPlan !== newPlan) {
-              const eventType = (
-                ["free", "pro", "business"].indexOf(newPlan) >
-                  ["free", "pro", "business"].indexOf(fromPlan)
-              )
-                ? "upgraded"
-                : "downgraded";
-
-              await adminSupabase.from("subscription_events").insert({
-                user_id: profile.id,
-                event_type: eventType,
-                from_plan: fromPlan,
-                to_plan: newPlan,
-                stripe_event_id: event.id,
-              });
-            }
-
+          if (!profile) {
+            console.error("Webhook: no user for customer", subscription.customer);
             break;
           }
 
-          // User ID in metadata
-          const priceId = subscription.items.data[0]?.price.id;
-          const newPlan = priceId ? getPlanFromPriceId(priceId) : "pro";
-
-          const status = subscription.cancel_at_period_end
-            ? "canceled"
-            : subscription.status === "active"
-            ? "active"
-            : subscription.status === "past_due"
-            ? "past_due"
-            : subscription.status === "trialing"
-            ? "trialing"
-            : "active";
-
-          await adminSupabase
+          const { error } = await db
             .from("user_profiles")
-            .update({
-              plan: newPlan,
-              subscription_status: status,
-              subscription_period_end: new Date(
-                subscription.current_period_end * 1000,
-              ).toISOString(),
-            })
-            .eq("id", userId);
+            .update({ plan: newPlan, subscription_status: status, subscription_period_end: periodEnd })
+            .eq("id", profile.id);
 
-          console.log(`Subscription updated for ${userId}: ${newPlan} (${status})`);
+          if (error) {
+            console.error("Webhook: failed to update subscription:", error);
+            break;
+          }
+
+          // Log plan changes
+          const fromPlan = profile.plan as SubscriptionPlan;
+          if (fromPlan !== newPlan) {
+            const upgrading = ["free", "pro", "business"].indexOf(newPlan) >
+              ["free", "pro", "business"].indexOf(fromPlan);
+            await db.from("subscription_events").insert({
+              user_id: profile.id,
+              event_type: upgrading ? "upgraded" : "downgraded",
+              from_plan: fromPlan,
+              to_plan: newPlan,
+              stripe_event_id: event.id,
+            });
+          }
           break;
         }
 
-        // ============================================
-        // Subscription deleted (cancellation effective)
-        // ============================================
         case "customer.subscription.deleted": {
-          const subscription = event.data.object;
-          const customerId = subscription.customer as string;
-
-          const { data: profile } = await adminSupabase
-            .from("user_profiles")
-            .select("id, plan")
-            .eq("stripe_customer_id", customerId)
-            .single();
+          const customerId = (event.data.object).customer as string;
+          const profile = await findProfileByCustomer(db, customerId);
 
           if (!profile) {
-            console.error("No user found for customer:", customerId);
+            console.error("Webhook: no user for customer", customerId);
             break;
           }
 
-          const fromPlan = profile.plan as SubscriptionPlan;
-
-          await adminSupabase
+          await db
             .from("user_profiles")
             .update({
               plan: "free",
@@ -218,95 +165,63 @@ export const handler = define.handlers({
             })
             .eq("id", profile.id);
 
-          await adminSupabase.from("subscription_events").insert({
+          await db.from("subscription_events").insert({
             user_id: profile.id,
             event_type: "canceled",
-            from_plan: fromPlan,
+            from_plan: profile.plan,
             to_plan: "free",
             stripe_event_id: event.id,
           });
-
-          console.log(`Subscription canceled for user ${profile.id}`);
           break;
         }
 
-        // ============================================
-        // Payment failed
-        // ============================================
         case "invoice.payment_failed": {
-          const invoice = event.data.object;
-          const customerId = invoice.customer as string;
+          const customerId = (event.data.object).customer as string;
+          const profile = await findProfileByCustomer(db, customerId);
+          if (!profile) break;
 
-          const { data: profile } = await adminSupabase
-            .from("user_profiles")
-            .select("id")
-            .eq("stripe_customer_id", customerId)
-            .single();
+          await db.from("user_profiles")
+            .update({ subscription_status: "past_due" })
+            .eq("id", profile.id);
 
-          if (profile) {
-            await adminSupabase
-              .from("user_profiles")
-              .update({ subscription_status: "past_due" })
-              .eq("id", profile.id);
-
-            await adminSupabase.from("subscription_events").insert({
-              user_id: profile.id,
-              event_type: "payment_failed",
-              stripe_event_id: event.id,
-              metadata: { invoice_id: invoice.id },
-            });
-
-            console.log(`Payment failed for user ${profile.id}`);
-          }
+          await db.from("subscription_events").insert({
+            user_id: profile.id,
+            event_type: "payment_failed",
+            stripe_event_id: event.id,
+            metadata: { invoice_id: (event.data.object).id },
+          });
           break;
         }
 
-        // ============================================
-        // Invoice paid (confirms renewal)
-        // ============================================
         case "invoice.paid": {
           const invoice = event.data.object;
-          const customerId = invoice.customer as string;
-
-          // Only process subscription invoices
           if (!invoice.subscription) break;
 
-          const { data: profile } = await adminSupabase
-            .from("user_profiles")
-            .select("id")
-            .eq("stripe_customer_id", customerId)
-            .single();
+          const profile = await findProfileByCustomer(db, invoice.customer as string);
+          if (!profile) break;
 
-          if (profile) {
-            await adminSupabase
-              .from("user_profiles")
-              .update({ subscription_status: "active" })
-              .eq("id", profile.id);
+          await db.from("user_profiles")
+            .update({ subscription_status: "active" })
+            .eq("id", profile.id);
 
-            await adminSupabase.from("subscription_events").insert({
-              user_id: profile.id,
-              event_type: "renewed",
-              stripe_event_id: event.id,
-              metadata: { invoice_id: invoice.id },
-            });
-          }
+          await db.from("subscription_events").insert({
+            user_id: profile.id,
+            event_type: "renewed",
+            stripe_event_id: event.id,
+            metadata: { invoice_id: invoice.id },
+          });
           break;
         }
 
         default:
-          console.log(`Unhandled webhook event: ${event.type}`);
+          // Ignore unhandled event types
+          break;
       }
 
-      return new Response(
-        JSON.stringify({ received: true }),
-        { status: 200, headers: { "Content-Type": "application/json" } },
-      );
+      return Response.json({ received: true });
     } catch (error) {
       console.error("Webhook processing error:", error);
-      return new Response(
-        JSON.stringify({ error: "Webhook processing failed" }),
-        { status: 500, headers: { "Content-Type": "application/json" } },
-      );
+      return Response.json({ error: "Webhook processing failed" }, { status: 500 });
     }
   },
 });
