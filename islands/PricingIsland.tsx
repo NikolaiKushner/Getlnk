@@ -133,13 +133,17 @@ export default function PricingIsland(
         throw new Error(data.error || "Failed to create checkout");
       }
 
-      // Paddle returns a transactionId — open Paddle.js overlay checkout
-      if (data.transactionId && typeof Paddle !== "undefined") {
+      // Open Paddle.js overlay checkout with price ID from server
+      if (data.priceId && typeof Paddle !== "undefined") {
         Paddle.Checkout.open({
-          transactionId: data.transactionId,
+          items: [{ priceId: data.priceId, quantity: 1 }],
+          customData: data.customData,
+          customer: { email: data.customerEmail },
+          settings: {
+            successUrl: data.successUrl,
+          },
         });
-      } else if (data.transactionId) {
-        // Fallback: redirect to Paddle hosted checkout
+      } else if (data.priceId) {
         throw new Error("Paddle.js not loaded. Please refresh the page and try again.");
       }
     } catch (err) {

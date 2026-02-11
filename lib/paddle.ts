@@ -65,38 +65,6 @@ export function getPlanFromPriceId(priceId: string): SubscriptionPlan {
 }
 
 // ============================================
-// Checkout — returns a transaction for client-side Paddle.js overlay
-// ============================================
-
-export interface CreateCheckoutOptions {
-  priceId: string;
-  userId: string;
-  userEmail: string;
-  successUrl: string;
-}
-
-/**
- * Create a Paddle transaction for checkout.
- * Returns a transaction ID that the client passes to Paddle.js overlay.
- */
-export async function createPaddleCheckout(
-  options: CreateCheckoutOptions,
-): Promise<string> {
-  const paddle = getPaddle();
-
-  const transaction = await paddle.transactions.create({
-    items: [{ priceId: options.priceId, quantity: 1 }],
-    customData: { user_id: options.userId },
-    checkout: {
-      url: options.successUrl,
-    },
-  });
-
-  // Return the transaction ID — client uses Paddle.js to open checkout overlay
-  return transaction.id;
-}
-
-// ============================================
 // Customer Portal
 // ============================================
 

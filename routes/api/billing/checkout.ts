@@ -1,13 +1,10 @@
 import { define } from "../../../utils.ts";
 import { getSession, getUserProfile } from "../../../lib/auth.ts";
-import {
-  createPaddleCheckout,
-  getPriceIds,
-} from "../../../lib/paddle.ts";
+import { getPriceIds } from "../../../lib/paddle.ts";
 import { isValidPlan } from "../../../lib/plans.ts";
 import type { SubscriptionPlan } from "../../../lib/database.types.ts";
 
-// POST /api/billing/checkout - Create a Paddle Checkout transaction
+// POST /api/billing/checkout - Return Paddle price ID + custom data for client-side checkout
 export const handler = define.handlers({
   async POST(ctx) {
     try {
@@ -55,22 +52,20 @@ export const handler = define.handlers({
         );
       }
 
-      // Get user profile
+      // Get user profile to verify it exists
       const profile = await getUserProfile(session.user.id, session.accessToken);
       if (!profile) {
         return Response.json({ error: "User profile not found" }, { status: 404 });
       }
 
-      // Create Paddle transaction for checkout overlay
+      // Return checkout config — Paddle.js opens the overlay on the client
       const origin = new URL(ctx.req.url).origin;
-      const transactionId = await createPaddleCheckout({
+      return Response.json({
         priceId,
-        userId: session.user.id,
-        userEmail: session.user.email || "",
+        customData: { user_id: session.user.id },
+        customerEmail: session.user.email || "",
         successUrl: `${origin}/dashboard/billing?success=true`,
       });
-
-      return Response.json({ transactionId });
     } catch (error) {
       console.error("Checkout error:", error);
       return Response.json(
