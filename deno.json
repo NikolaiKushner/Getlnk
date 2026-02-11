@@ -20,7 +20,7 @@
     "vite": "npm:vite@^7.3.1",
     "tailwindcss": "npm:tailwindcss@^4.1.18",
     "@tailwindcss/vite": "npm:@tailwindcss/vite@^4.1.18",
-    "stripe": "npm:stripe@^17.7.0"
+    "@paddle/paddle-node-sdk": "npm:@paddle/paddle-node-sdk@^3.6.0"
   },
   "compilerOptions": {
     "lib": ["dom", "dom.asynciterable", "dom.iterable", "deno.ns"],

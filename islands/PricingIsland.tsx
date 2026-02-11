@@ -1,9 +1,14 @@
 import { useSignal } from "@preact/signals";
 import type { SubscriptionPlan } from "../lib/database.types.ts";
 
+// deno-lint-ignore no-explicit-any
+declare const Paddle: any;
+
 interface PricingIslandProps {
   currentPlan: SubscriptionPlan;
   isAuthenticated: boolean;
+  paddleEnv?: string;
+  paddleSellerId?: string;
 }
 
 interface PlanData {
@@ -73,12 +78,33 @@ const PLANS: PlanData[] = [
   },
 ];
 
+let _paddleInitialized = false;
+function initPaddleJs(env: string, sellerId: string) {
+  if (_paddleInitialized) return;
+  _paddleInitialized = true;
+
+  const tryInit = () => {
+    if (typeof Paddle !== "undefined") {
+      if (env === "sandbox") Paddle.Environment.set("sandbox");
+      Paddle.Setup({ seller: Number(sellerId) });
+    } else {
+      setTimeout(tryInit, 200);
+    }
+  };
+  tryInit();
+}
+
 export default function PricingIsland(
-  { currentPlan, isAuthenticated }: PricingIslandProps,
+  { currentPlan, isAuthenticated, paddleEnv, paddleSellerId }: PricingIslandProps,
 ) {
   const isYearly = useSignal(false);
   const loading = useSignal<string | null>(null);
   const error = useSignal<string | null>(null);
+
+  // Initialize Paddle.js on mount
+  if (typeof globalThis.document !== "undefined" && paddleSellerId) {
+    initPaddleJs(paddleEnv || "sandbox", paddleSellerId);
+  }
 
   async function handleCheckout(plan: SubscriptionPlan) {
     if (plan === "free") return;
@@ -104,11 +130,17 @@ export default function PricingIsland(
       const data = await res.json();
 
       if (!res.ok) {
-        throw new Error(data.error || "Failed to create checkout session");
+        throw new Error(data.error || "Failed to create checkout");
       }
 
-      if (data.url) {
-        globalThis.location.href = data.url;
+      // Paddle returns a transactionId — open Paddle.js overlay checkout
+      if (data.transactionId && typeof Paddle !== "undefined") {
+        Paddle.Checkout.open({
+          transactionId: data.transactionId,
+        });
+      } else if (data.transactionId) {
+        // Fallback: redirect to Paddle hosted checkout
+        throw new Error("Paddle.js not loaded. Please refresh the page and try again.");
       }
     } catch (err) {
       error.value = err instanceof Error ? err.message : "Something went wrong";
@@ -307,7 +339,7 @@ export default function PricingIsland(
             },
             {
               q: "What payment methods do you accept?",
-              a: "We accept all major credit cards (Visa, Mastercard, American Express) through Stripe. We also support Apple Pay and Google Pay.",
+              a: "We accept all major credit cards, PayPal, Apple Pay, Google Pay, and other local payment methods through Paddle — our secure payment provider.",
             },
             {
               q: "Is there a free trial?",

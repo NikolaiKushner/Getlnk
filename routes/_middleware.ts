@@ -5,7 +5,7 @@ import { applyRateLimit } from "../lib/rate-limit.ts";
 export default define.middleware(async (ctx) => {
   const url = new URL(ctx.req.url);
 
-  // Rate limit API routes (skip Stripe webhook — it has its own signature verification)
+  // Rate limit API routes (skip billing webhook — it has its own signature verification)
   if (url.pathname.startsWith("/api/") && url.pathname !== "/api/billing/webhook") {
     const result = applyRateLimit(ctx.req);
     if ("response" in result) {
@@ -33,7 +33,7 @@ export default define.middleware(async (ctx) => {
     url.pathname === route || url.pathname.startsWith("/api/auth/")
   ) || url.pathname.startsWith("/@") || // Dynamic route: /@[username]
     url.pathname.startsWith("/api/links/redirect/") || // Redirect endpoint link: /api/links/redirect/:id
-    url.pathname === "/api/billing/webhook" || // Stripe webhook (uses signature verification, not auth)
+    url.pathname === "/api/billing/webhook" || // Billing webhook (uses signature verification, not auth)
     url.pathname === "/pricing"; // Public pricing page
 
   // Static files and assets

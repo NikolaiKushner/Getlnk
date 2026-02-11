@@ -8,6 +8,8 @@ export default define.page(async function Pricing(ctx) {
   const authUser = await getAuthUser(ctx.req) as AuthUser | null;
   const isAuthenticated = !!authUser;
   const currentPlan = authUser?.profile?.plan || "free";
+  const paddleEnv = Deno.env.get("PADDLE_ENVIRONMENT") || "sandbox";
+  const paddleSellerId = Deno.env.get("PADDLE_SELLER_ID") || "";
 
   return (
     <>
@@ -17,6 +19,7 @@ export default define.page(async function Pricing(ctx) {
           name="description"
           content="Simple, transparent pricing for Getlnk. Start free, upgrade when you need more."
         />
+        <script src="https://cdn.paddle.com/paddle/v2/paddle.js"></script>
       </Head>
       <div class="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50">
         {/* Header */}
@@ -80,6 +83,8 @@ export default define.page(async function Pricing(ctx) {
           <PricingIsland
             currentPlan={currentPlan}
             isAuthenticated={isAuthenticated}
+            paddleEnv={paddleEnv}
+            paddleSellerId={paddleSellerId}
           />
         </main>
       </div>

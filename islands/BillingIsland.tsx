@@ -14,7 +14,7 @@ interface BillingStatus {
   subscriptionStatus: string | null;
   subscriptionPeriodEnd: string | null;
   trialEndsAt: string | null;
-  hasStripeCustomer: boolean;
+  hasSubscription: boolean;
   limits: Record<string, unknown>;
 }
 
@@ -199,8 +199,8 @@ export default function BillingIsland(
         </h2>
 
         <div class="space-y-3">
-          {/* Manage via Stripe Portal (for existing subscribers) */}
-          {plan !== "free" && billingData.value?.hasStripeCustomer && (
+          {/* Manage via Paddle Portal (for existing subscribers) */}
+          {plan !== "free" && billingData.value?.hasSubscription && (
             <button
               type="button"
               onClick={openPortal}

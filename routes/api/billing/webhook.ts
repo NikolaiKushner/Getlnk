@@ -1,71 +1,64 @@
 import { define } from "../../../utils.ts";
 import { createAdminSupabaseClient } from "../../../lib/supabase.ts";
 import {
-  constructWebhookEvent,
   getPlanFromPriceId,
-  getStripe,
-} from "../../../lib/stripe.ts";
+  mapPaddleStatus,
+  verifyWebhookSignature,
+} from "../../../lib/paddle.ts";
 import type { SubscriptionPlan } from "../../../lib/database.types.ts";
 
-/** Map Stripe subscription status to our internal status. */
-function resolveSubscriptionStatus(
-  stripeStatus: string,
-  cancelAtPeriodEnd: boolean,
-): "active" | "canceled" | "past_due" | "trialing" {
-  if (cancelAtPeriodEnd) return "canceled";
-  if (stripeStatus === "past_due") return "past_due";
-  if (stripeStatus === "trialing") return "trialing";
-  return "active";
-}
-
-/** Look up a user profile by stripe_customer_id. */
-async function findProfileByCustomer(
+/** Look up a user profile by paddle_subscription_id. */
+async function findProfileBySubscription(
   adminSupabase: ReturnType<typeof createAdminSupabaseClient>,
-  customerId: string,
+  subscriptionId: string,
 ) {
   const { data } = await adminSupabase
     .from("user_profiles")
     .select("id, plan")
-    .eq("stripe_customer_id", customerId)
+    .eq("paddle_subscription_id", subscriptionId)
     .single();
   return data;
 }
 
-// POST /api/billing/webhook — Stripe webhook handler (no auth required)
+// POST /api/billing/webhook — Paddle webhook handler (no auth required)
 export const handler = define.handlers({
   async POST(ctx) {
-    const signature = ctx.req.headers.get("stripe-signature");
+    const signature = ctx.req.headers.get("paddle-signature");
     if (!signature) {
-      return Response.json({ error: "Missing stripe-signature header" }, { status: 400 });
+      return Response.json({ error: "Missing Paddle-Signature header" }, { status: 400 });
     }
 
-    let event;
-    try {
-      const body = await ctx.req.text();
-      event = await constructWebhookEvent(body, signature);
-    } catch (err) {
-      console.error("Webhook signature verification failed:", err);
+    const body = await ctx.req.text();
+
+    const isValid = await verifyWebhookSignature(body, signature);
+    if (!isValid) {
+      console.error("Webhook signature verification failed");
       return Response.json({ error: "Invalid signature" }, { status: 400 });
     }
 
+    const payload = JSON.parse(body);
+    const eventType = payload.event_type;
+    const data = payload.data;
     const db = createAdminSupabaseClient();
 
     try {
-      switch (event.type) {
-        case "checkout.session.completed": {
-          const session = event.data.object;
-          const userId = session.metadata?.supabase_user_id;
-          const customerId = session.customer as string;
-          const subscriptionId = session.subscription as string;
-
+      switch (eventType) {
+        case "subscription.created": {
+          // User ID comes from custom_data set during checkout
+          const userId = data?.custom_data?.user_id;
           if (!userId) {
-            console.error("Webhook: no supabase_user_id in checkout metadata");
+            console.error("Webhook: no user_id in subscription.created custom_data");
             break;
           }
 
-          const subscription = await getStripe().subscriptions.retrieve(subscriptionId);
-          const priceId = subscription.items.data[0]?.price.id;
+          const subscriptionId = data?.id;
+          const customerId = data?.customer_id;
+          const priceId = data?.items?.[0]?.price?.id;
           const plan = priceId ? getPlanFromPriceId(priceId) : "pro";
+          const status = mapPaddleStatus(data?.status || "active");
+          const periodEnd = data?.current_billing_period?.ends_at ||
+            data?.next_billed_at;
+          const managementUrls = data?.management_urls;
 
           const { data: current } = await db
             .from("user_profiles")
@@ -79,10 +72,15 @@ export const handler = define.handlers({
             .from("user_profiles")
             .update({
               plan,
-              stripe_customer_id: customerId,
-              stripe_subscription_id: subscriptionId,
-              subscription_status: "active",
-              subscription_period_end: new Date(subscription.current_period_end * 1000).toISOString(),
+              paddle_customer_id: customerId,
+              paddle_subscription_id: subscriptionId,
+              subscription_status: status,
+              subscription_period_end: periodEnd
+                ? new Date(periodEnd).toISOString()
+                : null,
+              paddle_portal_url: managementUrls?.cancel || null,
+              paddle_update_payment_url:
+                managementUrls?.update_payment_method || null,
             })
             .eq("id", userId);
 
@@ -96,33 +94,47 @@ export const handler = define.handlers({
             event_type: "upgraded",
             from_plan: fromPlan,
             to_plan: plan,
-            stripe_event_id: event.id,
-            metadata: { checkout_session_id: session.id },
+            paddle_event_id: payload.event_id || "",
+            metadata: { subscription_id: subscriptionId },
           });
           break;
         }
 
-        case "customer.subscription.updated": {
-          const subscription = event.data.object;
-          const priceId = subscription.items.data[0]?.price.id;
+        case "subscription.updated": {
+          const subscriptionId = data?.id;
+          const priceId = data?.items?.[0]?.price?.id;
           const newPlan = priceId ? getPlanFromPriceId(priceId) : "pro";
-          const status = resolveSubscriptionStatus(subscription.status, subscription.cancel_at_period_end);
-          const periodEnd = new Date(subscription.current_period_end * 1000).toISOString();
+          const status = mapPaddleStatus(data?.status || "active");
+          const periodEnd = data?.current_billing_period?.ends_at ||
+            data?.next_billed_at;
+          const managementUrls = data?.management_urls;
 
-          // Find user by metadata or customer ID fallback
-          const userId = subscription.metadata?.supabase_user_id;
+          // Try custom_data first, then look up by subscription ID
+          const userId = data?.custom_data?.user_id;
           const profile = userId
             ? { id: userId, plan: "free" as SubscriptionPlan }
-            : await findProfileByCustomer(db, subscription.customer as string);
+            : await findProfileBySubscription(db, subscriptionId);
 
           if (!profile) {
-            console.error("Webhook: no user for customer", subscription.customer);
+            console.error(
+              "Webhook: no user for subscription",
+              subscriptionId,
+            );
             break;
           }
 
           const { error } = await db
             .from("user_profiles")
-            .update({ plan: newPlan, subscription_status: status, subscription_period_end: periodEnd })
+            .update({
+              plan: newPlan,
+              subscription_status: status,
+              subscription_period_end: periodEnd
+                ? new Date(periodEnd).toISOString()
+                : null,
+              paddle_portal_url: managementUrls?.cancel || null,
+              paddle_update_payment_url:
+                managementUrls?.update_payment_method || null,
+            })
             .eq("id", profile.id);
 
           if (error) {
@@ -133,35 +145,42 @@ export const handler = define.handlers({
           // Log plan changes
           const fromPlan = profile.plan as SubscriptionPlan;
           if (fromPlan !== newPlan) {
-            const upgrading = ["free", "pro", "business"].indexOf(newPlan) >
-              ["free", "pro", "business"].indexOf(fromPlan);
+            const planOrder = ["free", "pro", "business"];
+            const upgrading = planOrder.indexOf(newPlan) >
+              planOrder.indexOf(fromPlan);
             await db.from("subscription_events").insert({
               user_id: profile.id,
               event_type: upgrading ? "upgraded" : "downgraded",
               from_plan: fromPlan,
               to_plan: newPlan,
-              stripe_event_id: event.id,
+              paddle_event_id: payload.event_id || "",
             });
           }
           break;
         }
 
-        case "customer.subscription.deleted": {
-          const customerId = (event.data.object).customer as string;
-          const profile = await findProfileByCustomer(db, customerId);
+        case "subscription.canceled": {
+          const subscriptionId = data?.id;
+          const profile = await findProfileBySubscription(db, subscriptionId);
 
           if (!profile) {
-            console.error("Webhook: no user for customer", customerId);
+            console.error(
+              "Webhook: no user for subscription",
+              subscriptionId,
+            );
             break;
           }
 
+          // Paddle fires canceled when subscription is actually ended — reset to free
           await db
             .from("user_profiles")
             .update({
               plan: "free",
-              subscription_status: null,
-              stripe_subscription_id: null,
+              subscription_status: "canceled",
+              paddle_subscription_id: null,
               subscription_period_end: null,
+              paddle_portal_url: null,
+              paddle_update_payment_url: null,
             })
             .eq("id", profile.id);
 
@@ -170,14 +189,14 @@ export const handler = define.handlers({
             event_type: "canceled",
             from_plan: profile.plan,
             to_plan: "free",
-            stripe_event_id: event.id,
+            paddle_event_id: payload.event_id || "",
           });
           break;
         }
 
-        case "invoice.payment_failed": {
-          const customerId = (event.data.object).customer as string;
-          const profile = await findProfileByCustomer(db, customerId);
+        case "subscription.past_due": {
+          const subscriptionId = data?.id;
+          const profile = await findProfileBySubscription(db, subscriptionId);
           if (!profile) break;
 
           await db.from("user_profiles")
@@ -187,17 +206,31 @@ export const handler = define.handlers({
           await db.from("subscription_events").insert({
             user_id: profile.id,
             event_type: "payment_failed",
-            stripe_event_id: event.id,
-            metadata: { invoice_id: (event.data.object).id },
+            paddle_event_id: payload.event_id || "",
           });
           break;
         }
 
-        case "invoice.paid": {
-          const invoice = event.data.object;
-          if (!invoice.subscription) break;
+        case "subscription.paused": {
+          const subscriptionId = data?.id;
+          const profile = await findProfileBySubscription(db, subscriptionId);
+          if (!profile) break;
 
-          const profile = await findProfileByCustomer(db, invoice.customer as string);
+          await db.from("user_profiles")
+            .update({ subscription_status: "canceled" })
+            .eq("id", profile.id);
+
+          await db.from("subscription_events").insert({
+            user_id: profile.id,
+            event_type: "paused",
+            paddle_event_id: payload.event_id || "",
+          });
+          break;
+        }
+
+        case "subscription.resumed": {
+          const subscriptionId = data?.id;
+          const profile = await findProfileBySubscription(db, subscriptionId);
           if (!profile) break;
 
           await db.from("user_profiles")
@@ -206,9 +239,29 @@ export const handler = define.handlers({
 
           await db.from("subscription_events").insert({
             user_id: profile.id,
-            event_type: "renewed",
-            stripe_event_id: event.id,
-            metadata: { invoice_id: invoice.id },
+            event_type: "resumed",
+            paddle_event_id: payload.event_id || "",
+          });
+          break;
+        }
+
+        case "transaction.payment_failed": {
+          // Transaction-level payment failure
+          const subscriptionId = data?.subscription_id;
+          if (!subscriptionId) break;
+
+          const profile = await findProfileBySubscription(db, subscriptionId);
+          if (!profile) break;
+
+          await db.from("user_profiles")
+            .update({ subscription_status: "past_due" })
+            .eq("id", profile.id);
+
+          await db.from("subscription_events").insert({
+            user_id: profile.id,
+            event_type: "payment_failed",
+            paddle_event_id: payload.event_id || "",
+            metadata: { transaction_id: data?.id },
           });
           break;
         }
@@ -221,7 +274,10 @@ export const handler = define.handlers({
       return Response.json({ received: true });
     } catch (error) {
       console.error("Webhook processing error:", error);
-      return Response.json({ error: "Webhook processing failed" }, { status: 500 });
+      return Response.json(
+        { error: "Webhook processing failed" },
+        { status: 500 },
+      );
     }
   },
 });

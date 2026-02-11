@@ -1,48 +1,40 @@
 import { define } from "../../../utils.ts";
 import { getSession, getUserProfile } from "../../../lib/auth.ts";
-import { createPortalSession } from "../../../lib/stripe.ts";
+import { createPortalSession } from "../../../lib/paddle.ts";
 
-// POST /api/billing/portal - Create a Stripe Customer Portal session
+// POST /api/billing/portal - Get Paddle customer portal URL
 export const handler = define.handlers({
   async POST(ctx) {
     try {
       const session = await getSession(ctx.req);
       if (!session) {
-        return new Response(
-          JSON.stringify({ error: "Unauthorized" }),
-          { status: 401, headers: { "Content-Type": "application/json" } },
-        );
+        return Response.json({ error: "Unauthorized" }, { status: 401 });
       }
 
       const profile = await getUserProfile(session.user.id, session.accessToken);
-      if (!profile?.stripe_customer_id) {
-        return new Response(
-          JSON.stringify({
-            error: "No billing account found. Please subscribe to a plan first.",
-          }),
-          { status: 400, headers: { "Content-Type": "application/json" } },
+
+      if (!profile?.paddle_customer_id) {
+        return Response.json(
+          { error: "No active subscription found. Please subscribe to a plan first." },
+          { status: 400 },
         );
       }
 
-      const origin = new URL(ctx.req.url).origin;
-      const portalSession = await createPortalSession(
-        profile.stripe_customer_id,
-        `${origin}/dashboard/billing`,
-      );
+      // Create an authenticated portal session for this customer
+      const portalUrl = await createPortalSession(profile.paddle_customer_id);
+      if (!portalUrl) {
+        return Response.json(
+          { error: "Unable to create portal session" },
+          { status: 500 },
+        );
+      }
 
-      return new Response(
-        JSON.stringify({ url: portalSession.url }),
-        { status: 200, headers: { "Content-Type": "application/json" } },
-      );
+      return Response.json({ url: portalUrl });
     } catch (error) {
       console.error("Portal error:", error);
-      return new Response(
-        JSON.stringify({
-          error: error instanceof Error
-            ? error.message
-            : "Failed to create portal session",
-        }),
-        { status: 500, headers: { "Content-Type": "application/json" } },
+      return Response.json(
+        { error: error instanceof Error ? error.message : "Failed to create portal session" },
+        { status: 500 },
       );
     }
   },
