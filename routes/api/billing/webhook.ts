@@ -41,6 +41,16 @@ export const handler = define.handlers({
     const data = payload.data;
     const db = createAdminSupabaseClient();
 
+    // DEBUG: Log the full webhook payload to diagnose issues
+    console.log("=== PADDLE WEBHOOK ===");
+    console.log("Event:", eventType);
+    console.log("Data ID:", data?.id);
+    console.log("Custom data:", JSON.stringify(data?.custom_data));
+    console.log("Items:", JSON.stringify(data?.items?.map((i: { price?: { id?: string } }) => i?.price?.id)));
+    console.log("Status:", data?.status);
+    console.log("Customer ID:", data?.customer_id);
+    console.log("======================");
+
     try {
       switch (eventType) {
         case "subscription.created": {

@@ -88,12 +88,11 @@ export async function getSubscription(subscriptionId: string) {
 }
 
 // ============================================
-// Webhook Signature Verification (HMAC-SHA256)
+// Webhook Signature Verification
 // ============================================
 
 /**
- * Verify Paddle webhook signature.
- * Paddle-Signature header format: ts=TIMESTAMP;h1=HASH
+ * Verify Paddle webhook signature using the official SDK.
  */
 export async function verifyWebhookSignature(
   rawBody: string,
@@ -102,40 +101,8 @@ export async function verifyWebhookSignature(
   const secret = Deno.env.get("PADDLE_WEBHOOK_SECRET");
   if (!secret) throw new Error("Missing PADDLE_WEBHOOK_SECRET environment variable.");
 
-  // Parse header: "ts=123456;h1=abcdef..."
-  const parts: Record<string, string> = {};
-  for (const part of paddleSignature.split(";")) {
-    const [key, ...vals] = part.split("=");
-    parts[key] = vals.join("=");
-  }
-
-  const ts = parts["ts"];
-  const h1 = parts["h1"];
-  if (!ts || !h1) return false;
-
-  // Build signed payload: ts:rawBody
-  const signedPayload = `${ts}:${rawBody}`;
-
-  const encoder = new TextEncoder();
-  const key = await crypto.subtle.importKey(
-    "raw",
-    encoder.encode(secret),
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign"],
-  );
-  const sig = await crypto.subtle.sign("HMAC", key, encoder.encode(signedPayload));
-  const computed = Array.from(new Uint8Array(sig))
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
-
-  // Timing-safe comparison
-  if (computed.length !== h1.length) return false;
-  let mismatch = 0;
-  for (let i = 0; i < computed.length; i++) {
-    mismatch |= computed.charCodeAt(i) ^ h1.charCodeAt(i);
-  }
-  return mismatch === 0;
+  const paddle = getPaddle();
+  return await paddle.webhooks.isSignatureValid(rawBody, secret, paddleSignature);
 }
 
 // ============================================
