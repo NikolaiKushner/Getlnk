@@ -1,6 +1,16 @@
 @import "tailwindcss";
 @plugin "daisyui";
 
+:root {
+  --ink: #0c1222;
+  --mist: #e8eef5;
+  --paper: #f4f7fb;
+  --sea: #0f7a6c;
+  --sea-deep: #0a5c52;
+  --lime-ink: #d6f56a;
+  --muted: #5b667a;
+}
+
 html,
 body {
   overflow-x: hidden;
@@ -16,7 +26,90 @@ textarea {
 }
 
 body {
-  background: #ffffff;
-  color: #171717;
-  font-family: var(--font-geist-sans), system-ui, sans-serif;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-body), system-ui, sans-serif;
+}
+
+.font-display {
+  font-family: var(--font-display), var(--font-body), system-ui, sans-serif;
+}
+
+@keyframes land-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes land-float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+}
+
+@keyframes land-sheen {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+.land-fade-up {
+  animation: land-fade-up 0.8s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.land-fade-up-delay-1 {
+  animation-delay: 0.12s;
+}
+
+.land-fade-up-delay-2 {
+  animation-delay: 0.24s;
+}
+
+.land-fade-up-delay-3 {
+  animation-delay: 0.36s;
+}
+
+.land-float {
+  animation: land-float 5.5s ease-in-out infinite;
+}
+
+.land-hero-bg {
+  background:
+    radial-gradient(ellipse 80% 60% at 15% 20%, rgba(15, 122, 108, 0.22), transparent 55%),
+    radial-gradient(ellipse 70% 50% at 85% 10%, rgba(214, 245, 106, 0.18), transparent 50%),
+    radial-gradient(ellipse 60% 40% at 70% 90%, rgba(12, 18, 34, 0.08), transparent 55%),
+    linear-gradient(165deg, #f4f7fb 0%, #e7eef6 45%, #dfe9f2 100%);
+  background-size: 120% 120%, 120% 120%, 100% 100%, 100% 100%;
+  animation: land-sheen 18s ease-in-out infinite;
+}
+
+.land-grid {
+  background-image:
+    linear-gradient(rgba(12, 18, 34, 0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(12, 18, 34, 0.04) 1px, transparent 1px);
+  background-size: 48px 48px;
+  mask-image: radial-gradient(ellipse at center, black 20%, transparent 75%);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .land-fade-up,
+  .land-float,
+  .land-hero-bg {
+    animation: none !important;
+  }
 }
