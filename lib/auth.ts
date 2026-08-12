@@ -14,6 +14,63 @@ export async function requireAuth() {
   return session.user.id;
 }
 
+async function migrateLegacyProfile(opts: {
+  oldId: string;
+  userId: string;
+  email: string;
+  fullName: string | null;
+  avatarUrl: string | null;
+  role: UserProfile["role"];
+  onboardingCompleted: boolean;
+}): Promise<UserProfile> {
+  const { oldId, userId, email, fullName, avatarUrl, role, onboardingCompleted } =
+    opts;
+
+  // Free the unique email, create the Google-id row, retarget FKs, drop legacy.
+  await db
+    .update(userProfiles)
+    .set({
+      email: `__legacy_${oldId}@migrating.invalid`,
+      updatedAt: new Date(),
+    })
+    .where(eq(userProfiles.id, oldId));
+
+  const [created] = await db
+    .insert(userProfiles)
+    .values({
+      id: userId,
+      email,
+      fullName,
+      avatarUrl,
+      role,
+      onboardingCompleted,
+    })
+    .onConflictDoUpdate({
+      target: userProfiles.id,
+      set: {
+        email,
+        fullName,
+        avatarUrl,
+        role,
+        onboardingCompleted,
+        updatedAt: new Date(),
+      },
+    })
+    .returning();
+
+  await db
+    .update(publicProfiles)
+    .set({ userId, updatedAt: new Date() })
+    .where(eq(publicProfiles.userId, oldId));
+  await db
+    .update(links)
+    .set({ userId, updatedAt: new Date() })
+    .where(eq(links.userId, oldId));
+  await db.delete(userProfiles).where(eq(userProfiles.id, oldId));
+
+  return created;
+}
+
 export async function ensureUserProfile(): Promise<UserProfile | null> {
   const session = await auth();
   const userId = session?.user?.id;
@@ -30,22 +87,20 @@ export async function ensureUserProfile(): Promise<UserProfile | null> {
   const fullName = session.user?.name ?? null;
   const avatarUrl = session.user?.image ?? null;
 
-  // Migrate legacy Clerk (or other) rows that share this email but different id
   const existingByEmail = await db.query.userProfiles.findFirst({
     where: eq(userProfiles.email, email),
   });
 
   if (existingByEmail && existingByEmail.id !== userId) {
-    const oldId = existingByEmail.id;
-    await db
-      .update(publicProfiles)
-      .set({ userId, updatedAt: new Date() })
-      .where(eq(publicProfiles.userId, oldId));
-    await db
-      .update(links)
-      .set({ userId, updatedAt: new Date() })
-      .where(eq(links.userId, oldId));
-    await db.delete(userProfiles).where(eq(userProfiles.id, oldId));
+    return migrateLegacyProfile({
+      oldId: existingByEmail.id,
+      userId,
+      email,
+      fullName,
+      avatarUrl,
+      role: existingByEmail.role,
+      onboardingCompleted: existingByEmail.onboardingCompleted,
+    });
   }
 
   const [{ count }] = await db
@@ -59,10 +114,7 @@ export async function ensureUserProfile(): Promise<UserProfile | null> {
       email,
       fullName,
       avatarUrl,
-      role:
-        existingByEmail?.role ??
-        ((count ?? 0) === 0 ? "superadmin" : "regular"),
-      onboardingCompleted: existingByEmail?.onboardingCompleted ?? false,
+      role: (count ?? 0) === 0 ? "superadmin" : "regular",
     })
     .onConflictDoUpdate({
       target: userProfiles.id,
