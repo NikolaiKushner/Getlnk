@@ -1,4 +1,4 @@
--- Getlnk Neon schema (Clerk user ids as text PKs; no Supabase auth/RLS)
+-- Getlnk Neon schema (Auth.js Google user ids as text PKs)
 
 CREATE TYPE user_role AS ENUM ('regular', 'superadmin');
 

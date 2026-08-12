@@ -1,24 +1,18 @@
 User-agent: *
 
-# Public marketing & profile pages (allowed)
 Allow: /
-Allow: /@
+Allow: /u/
+Allow: /pricing
+Allow: /privacy
+Allow: /terms
+Allow: /sign-in
 
-# Block private and admin areas
 Disallow: /dashboard
-Disallow: /profile
+Disallow: /analytics
 Disallow: /settings
 Disallow: /admin
-Disallow: /auth
-
-# Block API and auth endpoints from indexing
-Disallow: /api
+Disallow: /onboarding
 Disallow: /api/
-Disallow: /login
-Disallow: /register
-Disallow: /forgot-password
-Disallow: /reset-password
+Disallow: /sign-out
 
-# Optional: add your sitemap URL when available, e.g.:
-# Sitemap: https://your-domain.com/sitemap.xml
-
+Sitemap: https://getlnk.xyz/sitemap.xml

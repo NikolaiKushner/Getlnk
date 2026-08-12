@@ -20,8 +20,10 @@ export function DashboardNav({
         <div className="flex items-center gap-6">
           <Link href="/" className="flex items-center gap-2">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/logo.svg" width={28} height={28} alt="Getlnk" />
-            <span className="font-bold text-gray-900">Getlnk</span>
+            <img src="/logo.svg" width={28} height={28} alt="" />
+            <span className="font-display text-lg font-extrabold tracking-tight text-gray-900">
+              Getlnk
+            </span>
           </Link>
           <nav className="hidden items-center gap-4 text-sm font-medium text-gray-600 sm:flex">
             {items.map((item) => (

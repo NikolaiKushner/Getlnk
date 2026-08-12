@@ -1,46 +1,40 @@
 # Contributing to Getlnk
 
-Thank you for your interest in contributing!
+Thanks for contributing.
 
-## How to Contribute
+## Bugs
 
-### Reporting Bugs
+1. Check [Issues](https://github.com/NikolaiKushner/get-lnk/issues) first
+2. Open a new issue with steps to reproduce, expected vs actual, and environment
 
-1. Check [Issues](https://github.com/NikolaiKushner/Getlnk/issues) first
-2. Create a new issue with steps to reproduce, expected vs actual behavior, and
-   environment details
+## Pull requests
 
-### Pull Requests
+1. Fork and branch from `main`
+2. Follow existing TypeScript / Tailwind patterns
+3. Run `npm run lint` and `npm run build`
+4. Test locally with `npm run dev`
+5. Open a PR
 
-1. Fork the repository
-2. Create a feature branch from `main`
-3. Make your changes following the project's code style
-4. Run checks: `deno task check`
-5. Test locally: `deno task dev`
-6. Submit a pull request
+## Setup
 
-## Development Setup
+See [README.md](./README.md). Copy `.env.example` → `.env.local` (never commit secrets).
 
-See [README.md](./README.md) for quick setup and
-[docs/DATABASE_SETUP.md](./docs/DATABASE_SETUP.md) for database configuration.
-
-## Code Style
+## Code style
 
 - TypeScript strict mode
-- Run `deno fmt` before committing
-- Use `@/` import alias for project imports
-- Use shared UI components from `components/ui/`
+- Use `@/` import alias
+- Prefer shared UI from `components/ui/`
+- Keep API responses JSON (`{ data }` / `{ error }`)
 
-## Project Structure
+## Layout
 
-- `routes/` -- Pages and API endpoints
-- `islands/` -- Client-side interactive components
-- `components/ui/` -- Reusable UI components
-- `lib/` -- Shared utilities (auth, supabase, validators)
+- `app/` — pages and API routes
+- `components/` — React UI
+- `db/` — Drizzle schema and client
+- `lib/` — auth, R2, validators
 
-See [AGENTS.md](./AGENTS.md) for detailed conventions.
+See [AGENTS.md](./AGENTS.md) for agent conventions.
 
 ## License
 
-By contributing, you agree that your contributions will be licensed under the
-MIT License.
+Contributions are licensed under the MIT License.

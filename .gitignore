@@ -1,27 +1,15 @@
-# macOS system files
+# macOS
 .DS_Store
 .AppleDouble
 .LSOverride
+Thumbs.db
 
-# dotenv environment variable files
+# Env / secrets
 .env
 .env.*
 !.env.example
-.env.development.local
-.env.test.local
-.env.production.local
-.env.local
 
-# IDEs
-.idea/
-.vscode/
-*.swp
-*.swo
-*~
-
-# Fresh build directory
-_fresh/
-# npm + other dependencies
+# Dependencies
 node_modules/
 vendor/
 
@@ -30,25 +18,28 @@ vendor/
 logs/
 npm-debug.log*
 
-# OS files
-Thumbs.db
-.DS_Store
+# IDEs
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
 
-# Private files
-docs/product_strategy.md
-
-# next.js
+# Next.js
 /.next/
 /out/
 *.tsbuildinfo
 
-# vercel
+# Vercel
 .vercel
 
-# clerk
-.clerk/
-
-# local archives / agent tooling
+# Local archives / agent tooling (never publish)
 _legacy/
 .agents/
+.clerk/
 skills-lock.json
+
+# OS / editor junk
+*.pem
+*.key
+credentials.json
