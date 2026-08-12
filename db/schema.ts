@@ -13,7 +13,7 @@ import {
 export const userRoleEnum = pgEnum("user_role", ["regular", "superadmin"]);
 
 export const userProfiles = pgTable("user_profiles", {
-  id: text("id").primaryKey(), // Clerk user id
+  id: text("id").primaryKey(), // Auth.js user id (google_<sub>)
   email: text("email").notNull().unique(),
   role: userRoleEnum("role").notNull().default("regular"),
   fullName: text("full_name"),

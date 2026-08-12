@@ -1,36 +1,45 @@
-import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
+import { auth } from "@/auth";
+import { NextResponse } from "next/server";
 
-const isProtectedRoute = createRouteMatcher([
-  "/dashboard(.*)",
-  "/analytics(.*)",
-  "/settings(.*)",
-  "/onboarding(.*)",
-  "/admin(.*)",
-  "/api/links(.*)",
-  "/api/public-profile(.*)",
-  "/api/profile(.*)",
-  "/api/analytics(.*)",
-  "/api/settings(.*)",
-  "/api/admin(.*)",
-]);
+export default auth((req) => {
+  const { pathname } = req.nextUrl;
+  const isLoggedIn = !!req.auth;
 
-const isPublicApi = createRouteMatcher([
-  "/api/links/click(.*)",
-  "/api/links/redirect(.*)",
-  "/api/public-profile/view(.*)",
-]);
+  const isProtected =
+    pathname.startsWith("/dashboard") ||
+    pathname.startsWith("/analytics") ||
+    pathname.startsWith("/settings") ||
+    pathname.startsWith("/onboarding") ||
+    pathname.startsWith("/admin") ||
+    pathname.startsWith("/api/links") ||
+    pathname.startsWith("/api/public-profile") ||
+    pathname.startsWith("/api/profile") ||
+    pathname.startsWith("/api/analytics") ||
+    pathname.startsWith("/api/settings") ||
+    pathname.startsWith("/api/admin");
 
-export default clerkMiddleware(async (auth, req) => {
-  if (isPublicApi(req)) return;
-  if (isProtectedRoute(req)) {
-    await auth.protect();
+  const isPublicApi =
+    pathname.startsWith("/api/links/click") ||
+    pathname.startsWith("/api/links/redirect") ||
+    pathname.startsWith("/api/auth");
+
+  if (isPublicApi) return NextResponse.next();
+
+  if (isProtected && !isLoggedIn) {
+    if (pathname.startsWith("/api/")) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    const url = new URL("/sign-in", req.nextUrl.origin);
+    url.searchParams.set("callbackUrl", pathname);
+    return NextResponse.redirect(url);
   }
+
+  return NextResponse.next();
 });
 
 export const config = {
   matcher: [
     "/((?!_next|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)",
     "/(api|trpc)(.*)",
-    "/__clerk/:path*",
   ],
 };

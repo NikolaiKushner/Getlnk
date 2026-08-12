@@ -9,8 +9,8 @@ export default function PricingPage() {
           <Link href="/" className="font-bold text-gray-900">
             Getlnk
           </Link>
-          <Link href="/sign-up" className="text-sm font-medium text-indigo-600">
-            Sign up
+          <Link href="/sign-in" className="text-sm font-medium text-indigo-600">
+            Sign in
           </Link>
         </div>
       </header>
@@ -27,7 +27,7 @@ export default function PricingPage() {
             <li>Analytics</li>
           </ul>
           <Link
-            href="/sign-up"
+            href="/sign-in"
             className="mt-8 block rounded-xl bg-indigo-600 py-3 font-semibold text-white hover:bg-indigo-700"
           >
             Get started

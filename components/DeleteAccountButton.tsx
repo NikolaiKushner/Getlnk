@@ -1,11 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { useClerk } from "@clerk/nextjs";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui";
 
 export function DeleteAccountButton() {
-  const { signOut } = useClerk();
+  const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -20,7 +20,8 @@ export function DeleteAccountButton() {
       setLoading(false);
       return;
     }
-    await signOut({ redirectUrl: "/" });
+    router.push("/sign-out");
+    router.refresh();
   }
 
   return (

@@ -48,7 +48,7 @@ export default function HomePage() {
             </p>
             <div className="mt-10 flex flex-wrap items-center justify-center gap-4">
               <Link
-                href="/sign-up"
+                href="/sign-in"
                 className="rounded-xl bg-indigo-600 px-6 py-3 text-sm font-semibold text-white hover:bg-indigo-700"
               >
                 Create your page
@@ -131,7 +131,7 @@ export default function HomePage() {
                 <li>Basic analytics</li>
               </ul>
               <Link
-                href="/sign-up"
+                href="/sign-in"
                 className="mt-8 block rounded-xl bg-indigo-600 py-3 font-semibold text-white hover:bg-indigo-700"
               >
                 Get started

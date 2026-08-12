@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { UserButton } from "@clerk/nextjs";
+import { signOut } from "@/auth";
 
 const items = [
   { href: "/dashboard", label: "Dashboard" },
@@ -49,7 +49,19 @@ export function DashboardNav({
             )}
           </nav>
         </div>
-        <UserButton />
+        <form
+          action={async () => {
+            "use server";
+            await signOut({ redirectTo: "/" });
+          }}
+        >
+          <button
+            type="submit"
+            className="rounded-lg bg-gray-100 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-200"
+          >
+            Sign out
+          </button>
+        </form>
       </div>
     </header>
   );

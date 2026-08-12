@@ -1,21 +1,22 @@
-import { auth, currentUser } from "@clerk/nextjs/server";
 import { eq, sql } from "drizzle-orm";
+import { auth } from "@/auth";
 import { db } from "@/db";
 import { userProfiles, type UserProfile } from "@/db/schema";
 
 export async function requireAuth() {
-  const { userId } = await auth();
-  if (!userId) {
+  const session = await auth();
+  if (!session?.user?.id) {
     throw new Response(JSON.stringify({ error: "Unauthorized" }), {
       status: 401,
       headers: { "Content-Type": "application/json" },
     });
   }
-  return userId;
+  return session.user.id;
 }
 
 export async function ensureUserProfile(): Promise<UserProfile | null> {
-  const { userId } = await auth();
+  const session = await auth();
+  const userId = session?.user?.id;
   if (!userId) return null;
 
   const existing = await db.query.userProfiles.findFirst({
@@ -23,16 +24,11 @@ export async function ensureUserProfile(): Promise<UserProfile | null> {
   });
   if (existing) return existing;
 
-  const user = await currentUser();
-  const email =
-    user?.primaryEmailAddress?.emailAddress ??
-    user?.emailAddresses?.[0]?.emailAddress;
+  const email = session.user?.email;
   if (!email) return null;
 
-  const fullName =
-    [user?.firstName, user?.lastName].filter(Boolean).join(" ") ||
-    user?.fullName ||
-    null;
+  const fullName = session.user?.name ?? null;
+  const avatarUrl = session.user?.image ?? null;
 
   const [{ count }] = await db
     .select({ count: sql<number>`count(*)::int` })
@@ -44,7 +40,7 @@ export async function ensureUserProfile(): Promise<UserProfile | null> {
       id: userId,
       email,
       fullName,
-      avatarUrl: user?.imageUrl ?? null,
+      avatarUrl,
       role: (count ?? 0) === 0 ? "superadmin" : "regular",
     })
     .onConflictDoUpdate({
@@ -52,7 +48,7 @@ export async function ensureUserProfile(): Promise<UserProfile | null> {
       set: {
         email,
         fullName,
-        avatarUrl: user?.imageUrl ?? null,
+        avatarUrl,
         updatedAt: new Date(),
       },
     })

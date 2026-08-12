@@ -9,8 +9,9 @@ This file defines project-wide rules for AI agents working in this repo.
 - **Runtime:** Node.js on Vercel
 - **Framework:** Next.js App Router
 - **UI:** React + Tailwind CSS + DaisyUI
-- **Auth:** Clerk
+- **Auth:** Auth.js (Google OAuth)
 - **Database:** Neon Postgres + Drizzle ORM
+- **Storage:** Cloudflare R2 (avatars)
 
 ## Development Commands
 
@@ -27,18 +28,14 @@ npm run db:push
 - API routes in `app/api/`
 - Shared UI in `components/`
 - DB schema in `db/schema.ts`
-- Auth helpers in `lib/auth.ts` (`ensureUserProfile`, `requireAuth`)
+- Auth config in `auth.ts`; helpers in `lib/auth.ts` (`ensureUserProfile`)
 
 ## Data Access
 
 - All DB access uses Drizzle via `db` from `@/db`
-- Authorization is enforced in server code (no Postgres RLS)
-- Clerk user id is the `user_profiles.id` primary key (text)
+- Authorization is enforced in server code
+- User id is `google_<google-sub>` stored as `user_profiles.id`
 
 ## Deferred
 
-- Avatars: Cloudflare R2 (credentials provided later)
-- Billing: Paddle
-
-Legacy Deno/Fresh sources are archived under `_legacy/` for reference only
-and are excluded from TypeScript.
+- Paddle billing

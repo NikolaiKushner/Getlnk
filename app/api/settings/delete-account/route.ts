@@ -1,4 +1,3 @@
-import { clerkClient } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
@@ -11,8 +10,6 @@ export async function POST() {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const client = await clerkClient();
-  await client.users.deleteUser(profile.id);
   await db.delete(userProfiles).where(eq(userProfiles.id, profile.id));
 
   return NextResponse.json({ data: { ok: true } });
