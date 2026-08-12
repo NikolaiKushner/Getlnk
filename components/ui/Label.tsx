@@ -1,26 +1,18 @@
-import type { JSX } from "preact";
+"use client";
 
-type LabelElement = JSX.IntrinsicElements["label"];
+import type { LabelHTMLAttributes, ReactNode } from "react";
 
-interface LabelProps extends LabelElement {
-  required?: boolean;
-  children: preact.ComponentChildren;
-}
-
-export default function Label({
-  required = false,
-  className = "",
+export function Label({
   children,
+  className = "",
   ...props
-}: LabelProps) {
-  const baseStyles =
-    "block text-sm font-medium text-gray-700 mb-2 uppercase tracking-wide";
-  const combinedClassName = `${baseStyles} ${className}`.trim();
-
+}: LabelHTMLAttributes<HTMLLabelElement> & { children: ReactNode }) {
   return (
-    <label {...props} className={combinedClassName}>
+    <label
+      className={`mb-1 block text-sm font-medium text-gray-700 ${className}`}
+      {...props}
+    >
       {children}
-      {required && <span class="text-red-500 ml-1">*</span>}
     </label>
   );
 }

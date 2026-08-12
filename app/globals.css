@@ -1,0 +1,22 @@
+@import "tailwindcss";
+@plugin "daisyui";
+
+html,
+body {
+  overflow-x: hidden;
+  width: 100%;
+}
+
+button,
+a,
+input,
+select,
+textarea {
+  -webkit-tap-highlight-color: rgba(0, 0, 0, 0.1);
+}
+
+body {
+  background: #ffffff;
+  color: #171717;
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
+}

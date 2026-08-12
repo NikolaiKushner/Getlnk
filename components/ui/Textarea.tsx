@@ -1,72 +1,15 @@
-import type { JSX } from "preact";
+"use client";
 
-type TextareaElement = JSX.IntrinsicElements["textarea"];
+import type { TextareaHTMLAttributes } from "react";
 
-interface TextareaProps extends TextareaElement {
-  label?: string;
-  error?: string;
-  helperText?: string;
-  fullWidth?: boolean;
-}
-
-export default function Textarea({
-  label,
-  error,
-  helperText,
-  fullWidth = false,
-  rows = 4,
+export function Textarea({
   className = "",
-  id,
-  required,
   ...props
-}: TextareaProps) {
-  // Generate a unique ID if not provided
-  const textareaId = id ||
-    `textarea-${Math.random().toString(36).substr(2, 9)}`;
-
-  // Base styles
-  const baseStyles =
-    "transition-all duration-200 focus:outline-none resize-none";
-
-  // Variant styles
-  const variantStyles =
-    "border-0 bg-gray-50 focus:ring-2 focus:ring-gray-900 px-4 py-3 rounded-xl";
-
-  // Error styles
-  const errorStyles = error ? "border-red-500 focus:ring-red-500" : "";
-
-  // Width styles
-  const widthStyles = fullWidth ? "w-full" : "";
-
-  const combinedClassName =
-    `${baseStyles} ${variantStyles} ${errorStyles} ${widthStyles} ${className}`
-      .trim();
-
+}: TextareaHTMLAttributes<HTMLTextAreaElement>) {
   return (
-    <div class={fullWidth ? "w-full" : ""}>
-      {label && (
-        <label
-          for={textareaId}
-          class="block text-sm font-medium text-gray-700 mb-2 uppercase tracking-wide"
-        >
-          {label}
-          {required && <span class="text-red-500 ml-1">*</span>}
-        </label>
-      )}
-
-      <textarea
-        {...props}
-        id={textareaId}
-        rows={rows}
-        required={required}
-        className={combinedClassName}
-      />
-
-      {error && <p class="mt-1 text-sm text-red-600">{error}</p>}
-
-      {helperText && !error && (
-        <p class="mt-1 text-sm text-gray-500">{helperText}</p>
-      )}
-    </div>
+    <textarea
+      className={`w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 ${className}`}
+      {...props}
+    />
   );
 }

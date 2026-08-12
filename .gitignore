@@ -36,3 +36,19 @@ Thumbs.db
 
 # Private files
 docs/product_strategy.md
+
+# next.js
+/.next/
+/out/
+*.tsbuildinfo
+
+# vercel
+.vercel
+
+# clerk
+.clerk/
+
+# local archives / agent tooling
+_legacy/
+.agents/
+skills-lock.json
