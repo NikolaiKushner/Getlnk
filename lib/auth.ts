@@ -1,7 +1,7 @@
 import { eq, sql } from "drizzle-orm";
 import { auth } from "@/auth";
 import { db } from "@/db";
-import { userProfiles, type UserProfile } from "@/db/schema";
+import { links, publicProfiles, userProfiles, type UserProfile } from "@/db/schema";
 
 export async function requireAuth() {
   const session = await auth();
@@ -19,16 +19,34 @@ export async function ensureUserProfile(): Promise<UserProfile | null> {
   const userId = session?.user?.id;
   if (!userId) return null;
 
-  const existing = await db.query.userProfiles.findFirst({
+  const existingById = await db.query.userProfiles.findFirst({
     where: eq(userProfiles.id, userId),
   });
-  if (existing) return existing;
+  if (existingById) return existingById;
 
   const email = session.user?.email;
   if (!email) return null;
 
   const fullName = session.user?.name ?? null;
   const avatarUrl = session.user?.image ?? null;
+
+  // Migrate legacy Clerk (or other) rows that share this email but different id
+  const existingByEmail = await db.query.userProfiles.findFirst({
+    where: eq(userProfiles.email, email),
+  });
+
+  if (existingByEmail && existingByEmail.id !== userId) {
+    const oldId = existingByEmail.id;
+    await db
+      .update(publicProfiles)
+      .set({ userId, updatedAt: new Date() })
+      .where(eq(publicProfiles.userId, oldId));
+    await db
+      .update(links)
+      .set({ userId, updatedAt: new Date() })
+      .where(eq(links.userId, oldId));
+    await db.delete(userProfiles).where(eq(userProfiles.id, oldId));
+  }
 
   const [{ count }] = await db
     .select({ count: sql<number>`count(*)::int` })
@@ -41,7 +59,10 @@ export async function ensureUserProfile(): Promise<UserProfile | null> {
       email,
       fullName,
       avatarUrl,
-      role: (count ?? 0) === 0 ? "superadmin" : "regular",
+      role:
+        existingByEmail?.role ??
+        ((count ?? 0) === 0 ? "superadmin" : "regular"),
+      onboardingCompleted: existingByEmail?.onboardingCompleted ?? false,
     })
     .onConflictDoUpdate({
       target: userProfiles.id,
